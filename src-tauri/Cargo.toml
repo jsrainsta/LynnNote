@@ -1,0 +1,20 @@
+[package]
+name = "lynnnote"
+version = "0.1.0"
+description = "LynnNote - a lightweight, local-first Markdown note app for university study"
+authors = ["lbh"]
+edition = "2021"
+
+[lib]
+name = "lynnnote_lib"
+# 纯桌面应用：只用 rlib。cdylib/staticlib 是移动端模板的产物，
+# 在 GNU 工具链下会导致 DLL 全量导出符号（export ordinal too large）
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

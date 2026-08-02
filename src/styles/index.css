@@ -1,0 +1,361 @@
+/* KaTeX 公式样式（编辑器 widget 与预览区共用） */
+@import "katex/dist/katex.min.css";
+/* Atomic Editor 实时预览基础样式 */
+@import "@atomic-editor/editor/styles.css";
+@import "tailwindcss";
+
+/* 暗色主题使用 class 策略（html.dark） */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * 设计变量（Tailwind v4 @theme）
+ * 浅色为默认值；深色在 .dark 作用域内覆盖同名变量，
+ * 因此所有 utility（bg-page、text-ink 等）自动跟随主题。
+ */
+@theme {
+  /* 页面背景：偏暖白 */
+  --color-page: #faf9f7;
+  /* 侧边栏：略深于页面背景 */
+  --color-surface: #f4f2ee;
+  /* 编辑区背景 */
+  --color-panel: #ffffff;
+  /* 主文字：深灰 */
+  --color-ink: #33322f;
+  /* 次文字：中灰 */
+  --color-ink-secondary: #787572;
+  /* 弱文字 */
+  --color-ink-tertiary: #aaa7a3;
+  /* 边框：低对比度浅灰 */
+  --color-border: #e9e7e3;
+  --color-border-strong: #d8d5d0;
+  /* 强调色：柔和蓝紫 */
+  --color-accent: #6d7cf6;
+  --color-accent-strong: #5869f0;
+  --color-accent-soft: #eceefd;
+  /* 状态 */
+  --color-success: #4aa876;
+  /* 交互反馈（低对比度，避免强阴影） */
+  --color-hover: rgba(43, 42, 39, 0.045);
+  --color-active: rgba(43, 42, 39, 0.08);
+
+  /* 界面字体：优先系统字体 */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
+    sans-serif;
+  /* 代码字体 */
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas,
+    "Liberation Mono", monospace;
+}
+
+.dark {
+  --color-page: #16161a;
+  --color-surface: #1b1b20;
+  --color-panel: #202025;
+  --color-ink: #e8e7e4;
+  --color-ink-secondary: #a09e99;
+  --color-ink-tertiary: #6e6c67;
+  --color-border: #2a2a30;
+  --color-border-strong: #3b3b42;
+  --color-accent: #8b94ff;
+  --color-accent-strong: #a7aeff;
+  --color-accent-soft: rgba(139, 148, 255, 0.14);
+  --color-success: #63c29a;
+  --color-hover: rgba(255, 255, 255, 0.05);
+  --color-active: rgba(255, 255, 255, 0.09);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+::selection {
+  background-color: var(--color-accent-soft);
+}
+
+/* 细滚动条：低干扰风格 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================
+ * 阶段二：编辑器 / 预览区样式
+ * ============================================================ */
+
+/*
+ * Atomic Editor 主题变量 → 设计 token 映射。
+ * 所有 --atomic-editor-* 变量在浅色/深色下都跟随 --color-* 变化。
+ */
+.atomic-cm-editor {
+  /* Atomic 样式不设根背景，由消费方提供：显式指定，保证独立成块 */
+  background-color: var(--color-panel);
+  --atomic-editor-bg: var(--color-panel);
+  --atomic-editor-bg-panel: var(--color-panel);
+  --atomic-editor-bg-surface: var(--color-surface);
+  --atomic-editor-fg: var(--color-ink);
+  --atomic-editor-fg-muted: var(--color-ink-secondary);
+  --atomic-editor-fg-faint: var(--color-ink-tertiary);
+  --atomic-editor-accent: var(--color-accent);
+  --atomic-editor-accent-bright: var(--color-accent-strong);
+  --atomic-editor-accent-soft: var(--color-accent-soft);
+  --atomic-editor-border: var(--color-border);
+  --atomic-editor-link: var(--color-accent);
+  --atomic-editor-link-hover: var(--color-accent-strong);
+  --atomic-editor-selection-bg: var(--color-accent-soft);
+  --atomic-editor-code-bg: var(--color-surface);
+  --atomic-editor-code-rail: var(--color-border);
+  --atomic-editor-font: var(--font-sans);
+  --atomic-editor-font-mono: var(--font-mono);
+  --atomic-editor-body-size: 15px;
+  --atomic-editor-body-leading: 1.8;
+  --atomic-editor-measure: 72ch;
+  --atomic-editor-radius: 6px;
+  --atomic-editor-search-bg: var(--color-surface);
+  --atomic-editor-search-bg-active: var(--color-accent-soft);
+  --atomic-editor-initial-reveal-bg: var(--color-accent-soft);
+  --atomic-editor-initial-reveal-bg-strong: var(--color-accent);
+  /* 代码块内语法高亮 */
+  --atomic-editor-hl-keyword: var(--color-accent);
+  --atomic-editor-hl-string: var(--color-success);
+  --atomic-editor-hl-comment: var(--color-ink-tertiary);
+  --atomic-editor-hl-number: var(--color-ink-secondary);
+  --atomic-editor-hl-operator: var(--color-ink-secondary);
+  --atomic-editor-hl-function: var(--color-accent-strong);
+  --atomic-editor-hl-variable: var(--color-ink);
+  --atomic-editor-hl-type: var(--color-accent);
+  --atomic-editor-hl-tag: var(--color-accent);
+  --atomic-editor-hl-property: var(--color-ink);
+  --atomic-editor-hl-regexp: var(--color-success);
+  --atomic-editor-hl-escape: var(--color-accent);
+  --atomic-editor-hl-invalid: #e5484d;
+}
+
+/* 实时预览模式下光标行不需要整行高亮（Obsidian 风格默认是弱高亮，这里保持设计一致性） */
+.atomic-cm-editor .cm-activeLine {
+  background-color: var(--color-hover);
+}
+
+/* 编辑器内数学公式（math-widget.ts） */
+.ln-math-inline {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0.2em;
+  color: var(--color-ink);
+}
+.ln-math-display {
+  display: block;
+  text-align: center;
+  margin: 0.8em 0;
+}
+.ln-math .katex {
+  font-size: 1.08em;
+}
+
+/*
+ * 预览区排版（.ln-prose）：分栏右侧与纯预览模式共用。
+ * 只覆盖核心元素，保持简洁克制的观感。
+ */
+.ln-prose {
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--color-ink);
+}
+.ln-prose h1,
+.ln-prose h2,
+.ln-prose h3,
+.ln-prose h4,
+.ln-prose h5 {
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.2em 0 0.5em;
+}
+.ln-prose h1 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin-top: 0.4em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--color-border);
+}
+.ln-prose h2 {
+  font-size: 1.3em;
+  margin-top: 1.4em;
+}
+.ln-prose h3 {
+  font-size: 1.15em;
+}
+.ln-prose h4 {
+  font-size: 1em;
+}
+.ln-prose p {
+  margin: 0.6em 0;
+}
+.ln-prose a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+.ln-prose a:hover {
+  text-decoration: underline;
+}
+.ln-prose ul,
+.ln-prose ol {
+  margin: 0.6em 0;
+  padding-left: 1.5em;
+}
+.ln-prose ul {
+  list-style: disc;
+}
+.ln-prose ol {
+  list-style: decimal;
+}
+.ln-prose li {
+  margin: 0.25em 0;
+}
+.ln-prose li > input[type="checkbox"] {
+  margin-right: 0.45em;
+  accent-color: var(--color-accent);
+  vertical-align: -0.1em;
+}
+.ln-prose blockquote {
+  margin: 0.8em 0;
+  padding: 0.4em 1em;
+  border-left: 3px solid var(--color-border-strong);
+  border-radius: 0 6px 6px 0;
+  background: var(--color-surface);
+  color: var(--color-ink-secondary);
+}
+.ln-prose blockquote > p {
+  margin: 0.3em 0;
+}
+.ln-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.ln-prose :not(pre) > code {
+  background: var(--color-accent-soft);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.ln-prose pre {
+  margin: 0.8em 0;
+  padding: 0.9em 1.1em;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.ln-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+.ln-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  font-size: 0.92em;
+}
+.ln-prose th,
+.ln-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.35em 0.8em;
+  text-align: left;
+}
+.ln-prose th {
+  background: var(--color-surface);
+  font-weight: 600;
+}
+.ln-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-border-strong);
+  margin: 1.5em 0;
+}
+.ln-prose img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+.ln-prose .katex {
+  font-size: 1.05em;
+}
+
+/*
+ * 预览区代码高亮（rehype-highlight / highlight.js 类名）。
+ * 全部使用 CSS 变量，浅色/深色自动适配。
+ */
+.ln-prose .hljs-keyword,
+.ln-prose .hljs-selector-tag,
+.ln-prose .hljs-literal,
+.ln-prose .hljs-doctag,
+.ln-prose .hljs-title.function_ {
+  color: var(--color-accent);
+}
+.ln-prose .hljs-string,
+.ln-prose .hljs-regexp,
+.ln-prose .hljs-addition,
+.ln-prose .hljs-meta .hljs-string {
+  color: var(--color-success);
+}
+.ln-prose .hljs-comment,
+.ln-prose .hljs-quote,
+.ln-prose .hljs-meta {
+  color: var(--color-ink-tertiary);
+  font-style: italic;
+}
+.ln-prose .hljs-number,
+.ln-prose .hljs-symbol,
+.ln-prose .hljs-attr,
+.ln-prose .hljs-attribute,
+.ln-prose .hljs-operator,
+.ln-prose .hljs-punctuation {
+  color: var(--color-ink-secondary);
+}
+.ln-prose .hljs-title,
+.ln-prose .hljs-title.class_,
+.ln-prose .hljs-type,
+.ln-prose .hljs-built_in,
+.ln-prose .hljs-section,
+.ln-prose .hljs-tag {
+  color: var(--color-accent-strong);
+}
+.ln-prose .hljs-variable,
+.ln-prose .hljs-template-variable {
+  color: var(--color-ink);
+}
+.ln-prose .hljs-emphasis {
+  font-style: italic;
+}
+.ln-prose .hljs-strong {
+  font-weight: 700;
+}
+.ln-prose .hljs-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.ln-prose .hljs-bullet {
+  color: var(--color-ink-tertiary);
+}
