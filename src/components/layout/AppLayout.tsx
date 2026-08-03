@@ -3,6 +3,8 @@ import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import type { PanelSize } from "react-resizable-panels";
 import { ChevronRight } from "lucide-react";
 import { cx } from "../../lib/utils/cx";
+import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
+import { WorkspacePicker } from "../workspace/WorkspacePicker";
 import { CourseSidebar } from "../course/CourseSidebar";
 import { NoteListPanel } from "../note/NoteListPanel";
 import { EditorArea } from "../editor/EditorArea";
@@ -10,8 +12,10 @@ import { EditorArea } from "../editor/EditorArea";
 const SEPARATOR_CLASS =
   "w-px shrink-0 bg-border transition-colors duration-150 hover:bg-border-strong";
 
-/** 三栏布局（规范 §8）：课程栏 / 笔记栏 / 编辑区，栏宽可拖动、可折叠 */
+/** 三栏布局（规范 §8）：课程栏 / 笔记栏 / 编辑区，栏宽可拖动、可折叠。
+ *  未选择工作区时显示工作区选择界面。 */
 export function AppLayout() {
+  const workspacePath = useWorkspaceStore((s) => s.path);
   const coursePanel = usePanelRef();
   const notePanel = usePanelRef();
   const [courseCollapsed, setCourseCollapsed] = useState(false);
@@ -33,6 +37,11 @@ export function AppLayout() {
   const noteButtonStyle = courseCollapsed
     ? undefined
     : { left: `calc(${courseSize}% - 13px)` };
+
+  // 未选择工作区时显示选择界面（所有 hooks 执行完毕后再早退）
+  if (!workspacePath) {
+    return <WorkspacePicker />;
+  }
 
   return (
     <div className="relative h-full">

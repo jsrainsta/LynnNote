@@ -1,9 +1,11 @@
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { BookOpen, Moon, PanelLeftClose, Plus, Settings, Sun } from "lucide-react";
+import { BookOpen, FolderOpen, Moon, PanelLeftClose, Plus, Settings, Sun } from "lucide-react";
 import { useCourseStore } from "../../stores/useCourseStore";
 import { useNoteStore } from "../../stores/useNoteStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
+import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
+import { useToastStore } from "../../stores/useToastStore";
 import { IconButton } from "../common/IconButton";
 import { CourseItem } from "./CourseItem";
 
@@ -18,9 +20,19 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
   const notes = useNoteStore((s) => s.notes);
   const theme = useSettingsStore((s) => s.theme);
   const toggleTheme = useSettingsStore((s) => s.toggleTheme);
+  const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const showToast = useToastStore((s) => s.show);
 
   const countFor = (courseId: string) =>
     notes.filter((n) => n.courseId === courseId).length;
+
+  const handleSwitchWorkspace = async () => {
+    try {
+      await switchWorkspace();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "切换工作区失败", "error");
+    }
+  };
 
   return (
     <aside className="flex h-full min-w-0 flex-col bg-surface" aria-label="课程栏">
@@ -64,13 +76,16 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
         </button>
       </nav>
 
-      {/* 底部：主题切换 + 设置入口 */}
+      {/* 底部：主题切换 + 切换工作区 + 设置入口 */}
       <div className="flex shrink-0 items-center gap-1 border-t border-border px-3 py-2">
         <IconButton
           label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
           onClick={toggleTheme}
         >
           {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        </IconButton>
+        <IconButton label="切换工作区" onClick={() => void handleSwitchWorkspace()}>
+          <FolderOpen className="size-4" />
         </IconButton>
         <IconButton label="设置（阶段八实现）" disabled className="ml-auto">
           <Settings className="size-4" />

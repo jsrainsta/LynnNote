@@ -359,3 +359,15 @@ body {
 .ln-prose .hljs-bullet {
   color: var(--color-ink-tertiary);
 }
+
+/* ---------- 阶段三：toast 提示动画 ---------- */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

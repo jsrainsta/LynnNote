@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { EmptyState } from "../common/EmptyState";
-import { FileText } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import { useNoteStore } from "../../stores/useNoteStore";
+import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useEditorStore } from "../../stores/useEditorStore";
-import { contentFor } from "../../data/mock";
+import { useToastStore } from "../../stores/useToastStore";
+import { fs } from "../../lib/storage/fs";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { EditorToolbar } from "./EditorToolbar";
@@ -12,43 +14,96 @@ import { EditorToolbar } from "./EditorToolbar";
 const SPLIT_SEPARATOR_CLASS =
   "w-px shrink-0 bg-border transition-colors duration-150 hover:bg-border-strong";
 
+const AUTOSAVE_DELAY = 800;
+
 /**
  * 主编辑区（规范 §8.3）：
  * - edit（实时预览）：所见即所得行内实时渲染
  * - split（分栏）：左侧源码 + 右侧渲染，宽度可拖动
  * - preview（纯预览）：只渲染
- * 编辑内容实时写入 store；自动保存为状态模拟（阶段三接真实文件系统）。
+ *
+ * 阶段三：内容从磁盘读取（readNote → loadNoteContent），
+ * 编辑停止 800ms 后真实写入（saveNow），切换笔记前立即保存。
  */
 export function EditorArea() {
   const mode = useEditorStore((s) => s.mode);
   const showLineNumbers = useEditorStore((s) => s.showLineNumbers);
   const noteId = useNoteStore((s) => s.selectedNoteId);
-  const noteTitle = useNoteStore((s) => {
+  const noteRelativePath = useNoteStore((s) => {
     const note = s.notes.find((n) => n.id === s.selectedNoteId);
-    return note?.title ?? "未命名笔记";
+    return note?.relativePath;
   });
-
-  // 内容从 store 读取；切换笔记时 noteContents 未缓存则回退到 mock 初始内容
-  // 选择器只取 noteContents 引用（稳定），避免 contentFor 每次新建字符串导致多余重渲染
   const noteContents = useEditorStore((s) => s.noteContents);
-  const content = noteContents[noteId] ?? contentFor(noteId, noteTitle);
-
+  const loadNoteContent = useEditorStore((s) => s.loadNoteContent);
   const setNoteContent = useEditorStore((s) => s.setNoteContent);
+  const setNoteHash = useEditorStore((s) => s.setNoteHash);
+  const saveNow = useEditorStore((s) => s.saveNow);
   const setSaveStatus = useEditorStore((s) => s.setSaveStatus);
+  const workspacePath = useWorkspaceStore((s) => s.path);
+  const showToast = useToastStore((s) => s.show);
+
+  const prevNoteIdRef = useRef<string | null>(null);
   const saveTimerRef = useRef<number | null>(null);
 
-  // 自动保存状态模拟：停止输入 800ms 后标记"正在保存"，随后"已保存"
+  // 笔记切换：先立即保存旧笔记（若有未保存改动），再异步读取新笔记
+  useEffect(() => {
+    const prev = prevNoteIdRef.current;
+    prevNoteIdRef.current = noteId;
+
+    if (!noteId || !workspacePath || !noteRelativePath) return;
+
+    // 清掉旧笔记的防抖定时器（切走即保存，无需再等）
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (prev && prev !== noteId) {
+      void saveNow(prev);
+    }
+
+    let cancelled = false;
+    setSaveStatus("saving");
+    fs.readNote(workspacePath, noteRelativePath)
+      .then((result) => {
+        if (cancelled) return;
+        loadNoteContent(noteId, result.content);
+        setNoteHash(noteId, result.hash);
+        setSaveStatus("saved");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSaveStatus("error");
+        showToast(
+          `读取笔记失败：${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    noteId,
+    workspacePath,
+    noteRelativePath,
+    saveNow,
+    loadNoteContent,
+    setNoteHash,
+    setSaveStatus,
+    showToast,
+  ]);
+
+  // 编辑内容：写入缓存并调度防抖保存（规范 §18：停止输入 800ms 后写盘）
   const handleContentChange = useCallback(
     (newContent: string) => {
+      if (!noteId) return;
       setNoteContent(noteId, newContent);
-      setSaveStatus("unsaved");
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
-        setSaveStatus("saving");
-        window.setTimeout(() => setSaveStatus("saved"), 300);
-      }, 800);
+        saveTimerRef.current = null;
+        void saveNow(noteId);
+      }, AUTOSAVE_DELAY);
     },
-    [noteId, setNoteContent, setSaveStatus],
+    [noteId, setNoteContent, saveNow],
   );
 
   // 卸载时清理定时器
@@ -63,6 +118,17 @@ export function EditorArea() {
       <main className="flex h-full min-w-0 flex-col bg-panel" aria-label="编辑区域">
         <EditorToolbar />
         <EmptyState icon={FileText} title="未选择笔记" description="从左侧选择一篇笔记开始记录" />
+      </main>
+    );
+  }
+
+  // 编辑器只在内容就绪后挂载（AtomicEditor 的 markdownSource 仅挂载时生效）
+  const content = noteContents[noteId];
+  if (content === undefined) {
+    return (
+      <main className="flex h-full min-w-0 flex-col bg-panel" aria-label="编辑区域">
+        <EditorToolbar />
+        <EmptyState icon={Loader2} title="正在加载笔记…" description="" />
       </main>
     );
   }

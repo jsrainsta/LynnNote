@@ -13,7 +13,7 @@ const MODES: Array<{ mode: EditorMode; label: string; icon: typeof PenLine }> = 
   { mode: "preview", label: "纯预览", icon: Eye },
 ];
 
-/** 保存状态展示：绿=已保存 / 琥珀=正在保存 / 红=未保存 */
+/** 保存状态展示：绿=已保存 / 琥珀=正在保存 / 红=未保存或保存失败 */
 const SAVE_STATES: Record<
   SaveStatus,
   { label: string; dotClass: string; textClass: string }
@@ -21,6 +21,7 @@ const SAVE_STATES: Record<
   saved: { label: "已保存", dotClass: "bg-success", textClass: "text-ink-tertiary" },
   saving: { label: "正在保存", dotClass: "bg-amber-400", textClass: "text-ink-secondary" },
   unsaved: { label: "未保存", dotClass: "bg-red-400", textClass: "text-ink-secondary" },
+  error: { label: "保存失败", dotClass: "bg-red-500", textClass: "text-red-600" },
 };
 
 /** 编辑区顶部工具栏：标题、课程、保存状态、模式切换、行号、专注模式入口 */
@@ -73,7 +74,7 @@ export function EditorToolbar() {
         <Hash className="size-4" />
       </IconButton>
 
-      {/* 保存状态（阶段三接真实文件系统后与写入结果联动） */}
+      {/* 保存状态：与真实磁盘写入结果联动（阶段三） */}
       <span
         className={cx(
           "flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px]",
