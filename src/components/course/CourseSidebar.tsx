@@ -1,36 +1,108 @@
+import { useState } from "react";
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { BookOpen, FolderOpen, Moon, PanelLeftClose, Plus, Settings, Sun } from "lucide-react";
+import { Check, FolderOpen, Moon, PanelLeftClose, Plus, Settings, Sun, X } from "lucide-react";
+import logo from "../../assets/logo.png";
 import { useCourseStore } from "../../stores/useCourseStore";
 import { useNoteStore } from "../../stores/useNoteStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useToastStore } from "../../stores/useToastStore";
+import { useEditorStore } from "../../stores/useEditorStore";
+import { fs } from "../../lib/storage/fs";
+import type { CoursePatch } from "../../lib/storage/fs";
 import { IconButton } from "../common/IconButton";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 import { CourseItem } from "./CourseItem";
+import { CourseContextMenu } from "./CourseContextMenu";
+import type { CourseContextMenuState } from "./CourseContextMenu";
+import { CourseEditDialog } from "./CourseEditDialog";
 
 interface CourseSidebarProps {
   panelRef: RefObject<PanelImperativeHandle | null>;
 }
 
-/** 左侧课程栏（规范 §8.1） */
+/** 左侧课程栏（规范 §8.1）；阶段四起支持新建/编辑/删除课程（courses.json 持久化） */
 export function CourseSidebar({ panelRef }: CourseSidebarProps) {
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [menu, setMenu] = useState<CourseContextMenuState | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const courses = useCourseStore((s) => s.courses);
   const selectedCourseId = useCourseStore((s) => s.selectedCourseId);
+  const addCourse = useCourseStore((s) => s.addCourse);
+  const updateCourse = useCourseStore((s) => s.updateCourse);
+  const removeCourse = useCourseStore((s) => s.removeCourse);
   const notes = useNoteStore((s) => s.notes);
+  const removeNotesByCourseId = useNoteStore((s) => s.removeNotesByCourseId);
   const theme = useSettingsStore((s) => s.theme);
   const toggleTheme = useSettingsStore((s) => s.toggleTheme);
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const workspacePath = useWorkspaceStore((s) => s.path);
   const showToast = useToastStore((s) => s.show);
 
+  const editingCourse = courses.find((c) => c.id === editingId) ?? null;
+  const deletingCourse = courses.find((c) => c.id === deletingId) ?? null;
   const countFor = (courseId: string) =>
     notes.filter((n) => n.courseId === courseId).length;
+
+  const errorMessage = (error: unknown, fallback: string): string =>
+    error instanceof Error ? error.message : fallback;
 
   const handleSwitchWorkspace = async () => {
     try {
       await switchWorkspace();
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "切换工作区失败", "error");
+      showToast(errorMessage(error, "切换工作区失败"), "error");
+    }
+  };
+
+  /** 新建课程：内联输入名称 → slug 自动生成 → courses.json 追加 */
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name || !workspacePath) return;
+    try {
+      const meta = await fs.createCourse(workspacePath, name);
+      addCourse(meta);
+      setNewName("");
+      setCreating(false);
+    } catch (error) {
+      showToast(errorMessage(error, "新建课程失败"), "error");
+    }
+  };
+
+  /** 编辑课程：保存补丁（名称/颜色/教师等；改名称不动 slug 与目录） */
+  const handleSaveEdit = async (patch: CoursePatch) => {
+    if (!workspacePath || !editingId) return;
+    try {
+      const meta = await fs.updateCourse(workspacePath, editingId, patch);
+      updateCourse(editingId, meta);
+      setEditingId(null);
+      showToast("课程已保存", "success");
+    } catch (error) {
+      showToast(errorMessage(error, "保存课程失败"), "error");
+    }
+  };
+
+  /** 删除课程：courses.json 移除 + 删除课程目录（含全部笔记） */
+  const handleDelete = async (id: string) => {
+    if (!workspacePath) return;
+    const course = courses.find((c) => c.id === id);
+    if (!course) return;
+    try {
+      await fs.deleteCourse(workspacePath, id);
+      // 先清编辑器缓存（按删除前的笔记 id），再移除列表
+      const doomed = notes.filter((n) => n.courseId === id).map((n) => n.id);
+      useEditorStore.getState().removeNotesContent(doomed);
+      removeCourse(id);
+      removeNotesByCourseId(id);
+      setDeletingId(null);
+      showToast("课程已删除", "success");
+    } catch (error) {
+      setDeletingId(null);
+      showToast(errorMessage(error, "删除课程失败"), "error");
     }
   };
 
@@ -38,9 +110,13 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
     <aside className="flex h-full min-w-0 flex-col bg-surface" aria-label="课程栏">
       {/* Logo 与折叠按钮 */}
       <div className="flex h-12 shrink-0 items-center gap-2.5 px-3">
-        <div className="flex size-7 items-center justify-center rounded-lg bg-accent text-white">
-          <BookOpen className="size-4" strokeWidth={2} />
-        </div>
+        <img
+          src={logo}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="size-7 shrink-0 rounded-lg object-contain"
+        />
         <span className="text-[15px] font-semibold tracking-tight text-ink">
           LynnNote
         </span>
@@ -54,9 +130,50 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
         <p className="px-2 pb-1 pt-2 text-[11px] font-medium tracking-wider text-ink-tertiary">
           课程
         </p>
+
+        {/* 新建课程输入行（输入名称后回车确认） */}
+        {creating && (
+          <div className="flex items-center gap-1.5 px-1 pb-1.5">
+            <input
+              autoFocus
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleCreate();
+                if (e.key === "Escape") {
+                  setCreating(false);
+                  setNewName("");
+                }
+              }}
+              placeholder="课程名称"
+              aria-label="新建课程名称"
+              className="h-8 min-w-0 flex-1 rounded-lg border border-accent bg-panel px-2.5 text-[13px] text-ink outline-none focus:ring-2 focus:ring-accent/25"
+            />
+            <IconButton label="确认新建课程" onClick={() => void handleCreate()}>
+              <Check className="size-4" />
+            </IconButton>
+            <IconButton
+              label="取消新建课程"
+              onClick={() => {
+                setCreating(false);
+                setNewName("");
+              }}
+            >
+              <X className="size-4" />
+            </IconButton>
+          </div>
+        )}
+
         <ul className="flex flex-col gap-0.5">
           {courses.map((course) => (
-            <li key={course.id}>
+            <li
+              key={course.id}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, courseId: course.id });
+              }}
+            >
               <CourseItem
                 course={course}
                 noteCount={countFor(course.id)}
@@ -67,9 +184,8 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
         </ul>
         <button
           type="button"
-          title="新建课程（阶段四实现）"
-          disabled
-          className="mt-1 flex w-full cursor-not-allowed items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-ink-tertiary"
+          onClick={() => setCreating(true)}
+          className="mt-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
         >
           <Plus className="size-3.5" />
           新建课程
@@ -91,6 +207,35 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
           <Settings className="size-4" />
         </IconButton>
       </div>
+
+      {/* 课程右键菜单：编辑 / 删除 */}
+      <CourseContextMenu
+        state={menu}
+        onEdit={(id) => setEditingId(id)}
+        onDelete={(id) => setDeletingId(id)}
+        onClose={() => setMenu(null)}
+      />
+
+      {/* 编辑课程弹窗 */}
+      <CourseEditDialog
+        open={editingId !== null}
+        course={editingCourse}
+        onSave={(patch) => void handleSaveEdit(patch)}
+        onCancel={() => setEditingId(null)}
+      />
+
+      {/* 删除课程二次确认（提示该课程笔记数） */}
+      <ConfirmDialog
+        open={deletingId !== null}
+        title="删除课程"
+        description={`确定删除课程「${deletingCourse?.name ?? ""}」吗？该课程下的 ${deletingCourse ? countFor(deletingCourse.id) : 0} 篇笔记将一并从磁盘删除，此操作不可撤销。`}
+        confirmLabel="删除"
+        danger
+        onConfirm={() => {
+          if (deletingId) void handleDelete(deletingId);
+        }}
+        onCancel={() => setDeletingId(null)}
+      />
     </aside>
   );
 }

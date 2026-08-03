@@ -138,6 +138,30 @@ pub fn slug_to_display_name(slug: &str) -> String {
         .join(" ")
 }
 
+/// 课程名 → slug（小写、非字母数字→-、连续-压缩、去首尾-；中文保留）。
+/// 与前端 fs.ts 的 slugify 实现保持一致的规则（Unicode 字母数字均保留）。
+pub fn slugify(name: &str) -> String {
+    let mut slug = String::new();
+    for ch in name.chars() {
+        if ch.is_alphanumeric() {
+            slug.extend(ch.to_lowercase());
+        } else {
+            slug.push('-');
+        }
+    }
+    // 压缩连续 - 并去首尾
+    let collapsed: String = slug
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if collapsed.is_empty() {
+        "untitled".to_string()
+    } else {
+        collapsed
+    }
+}
+
 /// FNV-1a 内容哈希（u32，JS Number 可精确表示；仅需进程内确定性用于冲突检测）
 pub fn hash_content(s: &str) -> u32 {
     let mut hash: u32 = 0x811c_9dc5;
@@ -453,6 +477,131 @@ pub fn delete_note(workspace: &str, relative_path: &str) -> Result<(), String> {
         return Err("笔记文件不存在".into());
     }
     fs::remove_file(&target).map_err(|e| format!("删除笔记失败：{e}"))
+}
+
+// ---------- 课程管理（阶段四：courses.json 读写） ----------
+
+/// 写回 courses.json（课程元数据持久化）
+fn save_courses(workspace: &Path, courses: &[CourseMeta]) -> Result<(), String> {
+    let json =
+        serde_json::to_string(courses).map_err(|e| format!("序列化课程数据失败：{e}"))?;
+    fs::write(workspace.join("courses.json"), json)
+        .map_err(|e| format!("写入 courses.json 失败：{e}"))
+}
+
+/// 确保 slug 在 notes/ 下不重名：冲突时追加 -2/-3（目录名 = slug，不可重复）
+fn ensure_slug(workspace: &Path, base_slug: &str) -> String {
+    let notes_dir = workspace.join("notes");
+    let mut candidate = base_slug.to_string();
+    let mut n = 2;
+    while notes_dir.join(&candidate).exists() {
+        candidate = format!("{base_slug}-{n}");
+        n += 1;
+    }
+    candidate
+}
+
+/// 创建课程：生成 slug（不可变标识）→ 创建 notes/<slug>/ 目录 → courses.json 追加。
+/// 颜色按现有课程数量轮换预设色板。
+pub fn create_course(workspace: &str, name: &str) -> Result<CourseMeta, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("课程名称不能为空".into());
+    }
+    let ws = Path::new(workspace);
+    let slug = ensure_slug(ws, &slugify(name));
+    let dir = ws.join("notes").join(&slug);
+    fs::create_dir_all(&dir).map_err(|e| format!("无法创建课程目录：{e}"))?;
+
+    let mut courses = load_courses(ws)?;
+    let now = iso_ts(std::time::SystemTime::now());
+    let course = CourseMeta {
+        id: slug.clone(),
+        name: name.to_string(),
+        slug,
+        color: COURSE_COLORS[courses.len() % COURSE_COLORS.len()].to_string(),
+        teacher: None,
+        location: None,
+        schedule: None,
+        semester: None,
+        exam_date: None,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    courses.push(course.clone());
+    save_courses(ws, &courses)?;
+    Ok(course)
+}
+
+/// 更新课程元数据。None = 不修改该字段；Some("") = 清空。
+/// 注意：课程名改变**不**改 slug 与目录（slug 是稳定标识，保证笔记关联不丢）。
+pub fn update_course(
+    workspace: &str,
+    id: &str,
+    name: Option<String>,
+    color: Option<String>,
+    teacher: Option<String>,
+    location: Option<String>,
+    schedule: Option<String>,
+    semester: Option<String>,
+    exam_date: Option<String>,
+) -> Result<CourseMeta, String> {
+    let ws = Path::new(workspace);
+    let mut courses = load_courses(ws)?;
+    let course = courses
+        .iter_mut()
+        .find(|c| c.id == id)
+        .ok_or_else(|| "课程不存在".to_string())?;
+    if let Some(name) = name {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err("课程名称不能为空".into());
+        }
+        course.name = trimmed.to_string();
+    }
+    if let Some(color) = color {
+        if !color.is_empty() {
+            course.color = color;
+        }
+    }
+    if let Some(teacher) = teacher {
+        course.teacher = Some(teacher);
+    }
+    if let Some(location) = location {
+        course.location = Some(location);
+    }
+    if let Some(schedule) = schedule {
+        course.schedule = Some(schedule);
+    }
+    if let Some(semester) = semester {
+        course.semester = Some(semester);
+    }
+    if let Some(exam_date) = exam_date {
+        course.exam_date = Some(exam_date);
+    }
+    course.updated_at = iso_ts(std::time::SystemTime::now());
+    let updated = course.clone();
+    save_courses(ws, &courses)?;
+    Ok(updated)
+}
+
+/// 删除课程：从 courses.json 移除条目，并删除 notes/<slug>/ 目录（含全部笔记）。
+/// 目录不存在不视为错误（可能已被手动清理）。
+pub fn delete_course(workspace: &str, id: &str) -> Result<(), String> {
+    let ws = Path::new(workspace);
+    let mut courses = load_courses(ws)?;
+    let slug = courses
+        .iter()
+        .find(|c| c.id == id)
+        .map(|c| c.slug.clone())
+        .ok_or_else(|| "课程不存在".to_string())?;
+    courses.retain(|c| c.id != id);
+    save_courses(ws, &courses)?;
+    let dir = ws.join("notes").join(&slug);
+    if dir.exists() {
+        fs::remove_dir_all(&dir).map_err(|e| format!("删除课程目录失败：{e}"))?;
+    }
+    Ok(())
 }
 
 // ---------- 最近打开记录（应用配置目录） ----------

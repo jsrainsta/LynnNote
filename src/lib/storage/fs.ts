@@ -61,6 +61,26 @@ export interface WriteNoteResult {
   hash: number;
 }
 
+/** 课程更新补丁：省略的字段不修改（Rust Option 语义），空字符串 = 清空 */
+export interface CoursePatch {
+  name?: string;
+  color?: string;
+  teacher?: string;
+  location?: string;
+  schedule?: string;
+  semester?: string;
+  examDate?: string;
+}
+
+/** 与 Rust COURSE_COLORS 一致的默认色板（browser fallback 轮换使用） */
+const COURSE_COLORS = ["#6d7cf6", "#7fb069", "#5aa9a6", "#d9a05b"];
+
+/** 课程名 → slug（与 Rust slugify 同规则：Unicode 字母数字保留，其余转 -） */
+export function slugify(name: string): string {
+  const collapsed = name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+  return collapsed || "untitled";
+}
+
 export const isTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -150,6 +170,13 @@ export interface Fs {
     newTitle: string,
   ) => Promise<NoteEntryJson>;
   deleteNote: (workspace: string, relativePath: string) => Promise<void>;
+  createCourse: (workspace: string, name: string) => Promise<CourseMetaJson>;
+  updateCourse: (
+    workspace: string,
+    id: string,
+    patch: CoursePatch,
+  ) => Promise<CourseMetaJson>;
+  deleteCourse: (workspace: string, id: string) => Promise<void>;
   loadRecent: () => Promise<string[]>;
   saveRecent: (path: string) => Promise<void>;
 }
@@ -177,6 +204,12 @@ export const fs: Fs = isTauri
         }),
       deleteNote: (workspace, relativePath) =>
         invoke<void>("delete_note", { workspace, relativePath }),
+      createCourse: (workspace, name) =>
+        invoke<CourseMetaJson>("create_course", { workspace, name }),
+      updateCourse: (workspace, id, patch) =>
+        invoke<CourseMetaJson>("update_course", { workspace, id, ...patch }),
+      deleteCourse: (workspace, id) =>
+        invoke<void>("delete_course", { workspace, id }),
       loadRecent: () => invoke<string[]>("load_recent"),
       saveRecent: (path) => invoke<void>("save_recent", { path }),
     }
@@ -260,6 +293,68 @@ export const fs: Fs = isTauri
         scan.notes = scan.notes.filter((n) => n.relativePath !== relativePath);
         lsSaveWs(path, scan);
         localStorage.removeItem(lsContentKey(relativePath));
+      },
+      createCourse: async (_workspace, name) => {
+        const path = DEMO_PATH;
+        const scan = lsGetWs(path) ?? lsInitDemoWorkspace();
+        const base = slugify(name);
+        let slug = base;
+        let n = 2;
+        while (scan.courses.some((c) => c.slug === slug)) {
+          slug = `${base}-${n}`;
+          n += 1;
+        }
+        const now = new Date().toISOString();
+        const course: CourseMetaJson = {
+          id: slug,
+          name: name.trim(),
+          slug,
+          color: COURSE_COLORS[scan.courses.length % COURSE_COLORS.length],
+          teacher: null,
+          location: null,
+          schedule: null,
+          semester: null,
+          examDate: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        scan.courses.push(course);
+        lsSaveWs(path, scan);
+        return course;
+      },
+      updateCourse: async (_workspace, id, patch) => {
+        const path = DEMO_PATH;
+        const scan = lsGetWs(path) ?? lsInitDemoWorkspace();
+        const course = scan.courses.find((c) => c.id === id);
+        if (!course) throw new Error("课程不存在");
+        if (patch.name !== undefined) {
+          const trimmed = patch.name.trim();
+          if (!trimmed) throw new Error("课程名称不能为空");
+          course.name = trimmed;
+        }
+        if (patch.color !== undefined && patch.color !== "") course.color = patch.color;
+        if (patch.teacher !== undefined) course.teacher = patch.teacher;
+        if (patch.location !== undefined) course.location = patch.location;
+        if (patch.schedule !== undefined) course.schedule = patch.schedule;
+        if (patch.semester !== undefined) course.semester = patch.semester;
+        if (patch.examDate !== undefined) course.examDate = patch.examDate;
+        course.updatedAt = new Date().toISOString();
+        lsSaveWs(path, scan);
+        return { ...course };
+      },
+      deleteCourse: async (_workspace, id) => {
+        const path = DEMO_PATH;
+        const scan = lsGetWs(path) ?? lsInitDemoWorkspace();
+        const course = scan.courses.find((c) => c.id === id);
+        if (!course) throw new Error("课程不存在");
+        scan.courses = scan.courses.filter((c) => c.id !== id);
+        // 移除该课程全部笔记（含内容缓存）
+        const removed = scan.notes.filter((n) => n.courseSlug === course.slug);
+        scan.notes = scan.notes.filter((n) => n.courseSlug !== course.slug);
+        for (const note of removed) {
+          localStorage.removeItem(lsContentKey(note.relativePath));
+        }
+        lsSaveWs(path, scan);
       },
       loadRecent: async () => {
         const raw = lsGet(LS_RECENT);

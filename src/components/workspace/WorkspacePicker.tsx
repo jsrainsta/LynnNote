@@ -1,4 +1,5 @@
-import { BookOpen, FolderOpen, History } from "lucide-react";
+import { FolderOpen, History } from "lucide-react";
+import logo from "../../assets/logo.png";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useToastStore } from "../../stores/useToastStore";
 
@@ -28,9 +29,12 @@ export function WorkspacePicker() {
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 bg-panel px-4">
-      <div className="flex size-14 items-center justify-center rounded-2xl bg-accent text-white">
-        <BookOpen className="size-7" aria-hidden="true" />
-      </div>
+      <img
+        src={logo}
+        alt="LynnNote 图标"
+        className="size-16 rounded-2xl object-contain"
+        draggable={false}
+      />
       <div className="text-center">
         <h1 className="text-xl font-semibold tracking-tight text-ink">LynnNote</h1>
         <p className="mt-1.5 text-[13px] text-ink-secondary">

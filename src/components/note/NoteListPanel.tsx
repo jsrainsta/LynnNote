@@ -174,13 +174,17 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
               className="h-8 w-full rounded-lg border border-border bg-panel pl-7 pr-2 text-[13px] text-ink outline-none transition-colors placeholder:text-ink-tertiary focus:border-accent focus:ring-2 focus:ring-accent/25"
             />
           </div>
-          <IconButton
-            label={course ? "新建笔记" : "请先在左侧选择课程"}
+          <button
+            type="button"
             onClick={() => setCreating(true)}
             disabled={!course}
+            aria-label="新建笔记"
+            title={course ? "新建笔记" : "请先在左侧选择课程"}
+            className="flex h-8 shrink-0 items-center gap-1 rounded-lg bg-accent px-2.5 text-[13px] font-medium text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Plus className="size-4" />
-          </IconButton>
+            <Plus className="size-4" aria-hidden="true" />
+            新建
+          </button>
         </div>
       )}
 

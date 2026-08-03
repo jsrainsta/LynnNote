@@ -16,6 +16,8 @@ interface NoteState {
   updateNote: (oldId: string, entry: NoteEntryJson) => void;
   /** 删除：若删的是当前笔记则选中同课程相邻笔记 */
   removeNote: (id: string) => void;
+  /** 删除课程时批量移除其全部笔记（选中若被移除则回退第一门） */
+  removeNotesByCourseId: (courseId: string) => void;
 }
 
 /** 从文件头生成摘要：去 markdown 记号、压缩空白、截断 60 字 */
@@ -83,6 +85,16 @@ export const useNoteStore = create<NoteState>()((set, get) => ({
         const removed = s.notes.find((n) => n.id === id);
         const sameCourse = notes.filter((n) => n.courseId === removed?.courseId);
         selected = sameCourse[0]?.id ?? notes[0]?.id ?? null;
+      }
+      return { notes, selectedNoteId: selected };
+    }),
+
+  removeNotesByCourseId: (courseId) =>
+    set((s) => {
+      const notes = s.notes.filter((n) => n.courseId !== courseId);
+      let selected = s.selectedNoteId;
+      if (selected && !notes.some((n) => n.id === selected)) {
+        selected = notes[0]?.id ?? null;
       }
       return { notes, selectedNoteId: selected };
     }),

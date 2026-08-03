@@ -77,6 +77,34 @@ pub fn delete_note(workspace: String, relative_path: String) -> Result<(), Strin
 }
 
 #[tauri::command]
+pub fn create_course(workspace: String, name: String) -> Result<filesystem::CourseMeta, String> {
+    filesystem::create_course(&workspace, &name)
+}
+
+/// 更新课程元数据；None = 不修改（前端 patch 中省略的字段传 None）
+#[tauri::command]
+pub fn update_course(
+    workspace: String,
+    id: String,
+    name: Option<String>,
+    color: Option<String>,
+    teacher: Option<String>,
+    location: Option<String>,
+    schedule: Option<String>,
+    semester: Option<String>,
+    exam_date: Option<String>,
+) -> Result<filesystem::CourseMeta, String> {
+    filesystem::update_course(
+        &workspace, &id, name, color, teacher, location, schedule, semester, exam_date,
+    )
+}
+
+#[tauri::command]
+pub fn delete_course(workspace: String, id: String) -> Result<(), String> {
+    filesystem::delete_course(&workspace, &id)
+}
+
+#[tauri::command]
 pub fn load_recent(app: AppHandle) -> Result<Vec<String>, String> {
     filesystem::load_recent(&app)
 }

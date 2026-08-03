@@ -6,15 +6,17 @@ interface CourseItemProps {
   course: Course;
   noteCount: number;
   selected: boolean;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function CourseItem({ course, noteCount, selected }: CourseItemProps) {
+export function CourseItem({ course, noteCount, selected, onContextMenu }: CourseItemProps) {
   const selectCourse = useCourseStore((s) => s.selectCourse);
 
   return (
     <button
       type="button"
       onClick={() => selectCourse(course.id)}
+      onContextMenu={onContextMenu}
       aria-current={selected ? "true" : undefined}
       className={cx(
         "group relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left",

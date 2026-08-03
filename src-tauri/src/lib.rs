@@ -14,6 +14,9 @@ pub fn run() {
             commands::create_note,
             commands::rename_note,
             commands::delete_note,
+            commands::create_course,
+            commands::update_course,
+            commands::delete_course,
             commands::load_recent,
             commands::save_recent,
         ])

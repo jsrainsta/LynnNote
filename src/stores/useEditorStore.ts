@@ -42,6 +42,8 @@ interface EditorState {
   flushAll: () => Promise<void>;
   /** 重命名后内容缓存按新 id 迁移 */
   remapNote: (oldId: string, newId: string) => void;
+  /** 删除课程后批量清除其笔记的内容/哈希/脏标记/位置缓存 */
+  removeNotesContent: (ids: string[]) => void;
 }
 
 function currentNoteIs(noteId: string): boolean {
@@ -141,6 +143,21 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         noteHashes: move(s.noteHashes),
         dirtyNotes: move(s.dirtyNotes),
         lastPosition: move(s.lastPosition),
+      };
+    }),
+
+  removeNotesContent: (ids) =>
+    set((s) => {
+      const drop = <T,>(record: Record<string, T>): Record<string, T> => {
+        const next = { ...record };
+        for (const id of ids) delete next[id];
+        return next;
+      };
+      return {
+        noteContents: drop(s.noteContents),
+        noteHashes: drop(s.noteHashes),
+        dirtyNotes: drop(s.dirtyNotes),
+        lastPosition: drop(s.lastPosition),
       };
     }),
 }));

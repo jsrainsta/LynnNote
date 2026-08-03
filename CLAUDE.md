@@ -6,7 +6,7 @@
 
 - 需求文档：`../LynnNote_Agent_Development_Spec.md`（仓库外，规范 §29 定义了 Agent 工作方式：每次只做一个阶段、不要过度设计、不提前实现后续阶段）
 - 开发日志：`../LynnNote_Development_Log.md`（仓库外，每阶段完成后追加）
-- 开发按阶段推进：阶段一（静态界面）、阶段二（CM6 编辑器 + 实时预览）、阶段三（本地文件系统）已完成，下一步阶段四（课程系统）
+- 开发按阶段推进：阶段一（静态界面）、阶段二（CM6 编辑器 + 实时预览）、阶段三（本地文件系统）、阶段四（课程系统）已完成，下一步阶段五（模板和斜杠命令）
 
 ## 命令
 
@@ -36,7 +36,9 @@ cd src-tauri && cargo +stable-x86_64-pc-windows-gnu build
 - 主题 token 在 `src/styles/index.css` 的 `@theme`（Tailwind v4 class 策略暗色模式，`html.dark`）
 - 状态拆分：`src/stores/` 下 `useCourseStore`/`useNoteStore`/`useEditorStore`/`useSettingsStore`
 - 文件系统：Rust 命令在 `src-tauri/src/`（filesystem/mod.rs 实现 + commands/mod.rs 声明）；前端适配层 `src/lib/storage/fs.ts`（Tauri invoke / 浏览器 localStorage 双模式，JSON 类型与 Rust serde camelCase 对应），工作区状态在 `useWorkspaceStore`（启动自动恢复最近工作区，recent.json 存应用配置目录）
-- 工作区结构：`notes/<课程slug>/*.md`；courses.json 只读（阶段四写入）；笔记 id = 相对路径
+- 工作区结构：`notes/<课程slug>/*.md`；courses.json 读写（阶段四：课程 CRUD）；笔记 id = 相对路径
+- 课程系统（阶段四）：slug 在创建时生成后**不可变**（改课程名不动目录，保证笔记关联）；`slugify` 规则 Unicode 字母数字保留（中文原样）、其余转 `-`，Rust 与 fs.ts 双实现保持一致；删除课程 = courses.json 移除 + 删除整个课程目录（UI 有笔记数确认）；课程编辑弹窗 `CourseEditDialog.tsx`、右键菜单 `CourseContextMenu.tsx`、色板 8 色
+- Logo：`src/assets/logo.png`（界面显示）；`src-tauri/icons/` 由 sources/logo.png 用 PIL 生成（改图标用 PIL 重新生成，勿手工编辑）
 - 编辑器：`src/components/editor/`——`MarkdownEditor.tsx`（live=AtomicEditor 实时预览 / source=裸 CM6 分栏源码）、`MarkdownPreview.tsx`（react-markdown 渲染）、`math-widget.ts`（KaTeX 公式 widget）、`editor-theme.ts`（CM6 主题）、`markdown-commands.ts`（Ctrl+B/I/K）
 - 编辑器内容存于 `useEditorStore.noteContents`（按 noteId 缓存）；自动保存真实写盘（800ms 防抖 → saveNow → 冲突检测 FNV hash），切换笔记/关闭窗口前 flushAll；SaveStatus 含 error
 - 浏览器验证（CDP）：Tauri 桌面模式用 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9223"` 启动 exe 后可连 WebView2 CDP

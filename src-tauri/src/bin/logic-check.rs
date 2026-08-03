@@ -3,7 +3,7 @@
 // 运行：cargo +stable-x86_64-pc-windows-gnu run --bin logic-check
 
 use lynnnote_lib::filesystem::{
-    hash_content, replace_first_heading, sanitize_filename, slug_to_display_name,
+    hash_content, replace_first_heading, sanitize_filename, slug_to_display_name, slugify,
 };
 
 fn assert_eq(actual: String, expected: &str, label: &str) {
@@ -38,6 +38,17 @@ fn main() {
     );
     assert_eq(slug_to_display_name("数据结构"), "数据结构", "中文 slug 原样");
     assert_eq(slug_to_display_name(""), "", "空 slug");
+
+    // slugify：课程名 → 稳定 slug（与前端 fs.ts 规则一致）
+    assert_eq(
+        slugify("Operating System"),
+        "operating-system",
+        "英文课程名小写 + 空格转 -",
+    );
+    assert_eq(slugify("数据结构"), "数据结构", "中文课程名保留");
+    assert_eq(slugify("  计算机网络 (上)  "), "计算机网络-上", "标点转 - 并压缩去首尾");
+    assert_eq(slugify("C++ 程序设计"), "c-程序设计", "混合大小写与符号");
+    assert_eq(slugify("!!!"), "untitled", "纯符号回退");
 
     // hash_content：确定性
     assert_eq(
