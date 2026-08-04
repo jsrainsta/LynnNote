@@ -4,10 +4,12 @@ import type { PanelSize } from "react-resizable-panels";
 import { ChevronRight } from "lucide-react";
 import { cx } from "../../lib/utils/cx";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
+import { useFocusStore } from "../../stores/useFocusStore";
 import { WorkspacePicker } from "../workspace/WorkspacePicker";
 import { CourseSidebar } from "../course/CourseSidebar";
 import { NoteListPanel } from "../note/NoteListPanel";
 import { EditorArea } from "../editor/EditorArea";
+import { FocusBar } from "../focus/FocusBar";
 
 const SEPARATOR_CLASS =
   "w-px shrink-0 bg-border transition-colors duration-150 hover:bg-border-strong";
@@ -16,6 +18,7 @@ const SEPARATOR_CLASS =
  *  未选择工作区时显示工作区选择界面。 */
 export function AppLayout() {
   const workspacePath = useWorkspaceStore((s) => s.path);
+  const focusActive = useFocusStore((s) => s.active);
   const coursePanel = usePanelRef();
   const notePanel = usePanelRef();
   const [courseCollapsed, setCourseCollapsed] = useState(false);
@@ -41,6 +44,19 @@ export function AppLayout() {
   // 未选择工作区时显示选择界面（所有 hooks 执行完毕后再早退）
   if (!workspacePath) {
     return <WorkspacePicker />;
+  }
+
+  // 专注模式（规范 §13）：隐藏侧栏与非必要按钮，仅 FocusBar + 编辑区；
+  // EditorArea 保持挂载（编辑器状态不丢），字号由 .focus-mode 类放大
+  if (focusActive) {
+    return (
+      <div className="focus-mode flex h-full flex-col">
+        <FocusBar />
+        <div className="min-h-0 flex-1">
+          <EditorArea />
+        </div>
+      </div>
+    );
   }
 
   return (

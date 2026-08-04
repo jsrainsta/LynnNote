@@ -3,7 +3,8 @@
 // 运行：cargo +stable-x86_64-pc-windows-gnu run --bin logic-check
 
 use lynnnote_lib::filesystem::{
-    hash_content, replace_first_heading, sanitize_filename, slug_to_display_name, slugify,
+    create_note, delete_template, hash_content, list_templates, replace_first_heading,
+    sanitize_filename, save_template, slug_to_display_name, slugify, NoteTemplate,
 };
 
 fn assert_eq(actual: String, expected: &str, label: &str) {
@@ -49,6 +50,52 @@ fn main() {
     assert_eq(slugify("  计算机网络 (上)  "), "计算机网络-上", "标点转 - 并压缩去首尾");
     assert_eq(slugify("C++ 程序设计"), "c-程序设计", "混合大小写与符号");
     assert_eq(slugify("!!!"), "untitled", "纯符号回退");
+
+    // create_note：模板内容写入（临时工作区）
+    {
+        let tmp = std::env::temp_dir().join(format!("lynnnote-logic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("notes/os")).unwrap();
+        let ws = tmp.to_string_lossy().to_string();
+
+        let entry = create_note(&ws, "os", "模板测试", Some("# 模板内容\n\n正文\n"))
+            .expect("create_note 失败");
+        let written = std::fs::read_to_string(tmp.join(&entry.relative_path)).unwrap();
+        assert_eq(
+            written,
+            "# 模板内容\n\n正文\n",
+            "create_note 写入传入的模板内容",
+        );
+
+        let entry2 = create_note(&ws, "os", "默认测试", None).expect("create_note 失败");
+        let written2 = std::fs::read_to_string(tmp.join(&entry2.relative_path)).unwrap();
+        assert_eq(written2, "# 默认测试\n", "create_note 默认标题模板");
+
+        // 模板 CRUD 往返
+        let tpl = save_template(
+            &ws,
+            NoteTemplate {
+                id: String::new(),
+                name: "我的模板".into(),
+                content: "# {{title}}\n正文".into(),
+                updated_at: String::new(),
+            },
+        )
+        .expect("save_template 失败");
+        assert_eq(tpl.name, "我的模板", "save_template 返回条目");
+        let listed = list_templates(&ws).expect("list_templates 失败");
+        if listed.len() != 1 || listed[0].id != tpl.id {
+            panic!("断言失败：模板列表应含 1 个新模板");
+        }
+        println!("  ok  list_templates 返回新模板");
+        delete_template(&ws, &tpl.id).expect("delete_template 失败");
+        if !list_templates(&ws).unwrap().is_empty() {
+            panic!("断言失败：删除后列表应为空");
+        }
+        println!("  ok  delete_template 移除模板");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 
     // hash_content：确定性
     assert_eq(

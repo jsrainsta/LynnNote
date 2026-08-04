@@ -8,9 +8,11 @@ import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useToastStore } from "../../stores/useToastStore";
 import { fs } from "../../lib/storage/fs";
+import { applyTemplate, todayDate } from "../../lib/templates";
 import { IconButton } from "../common/IconButton";
 import { EmptyState } from "../common/EmptyState";
 import { ConfirmDialog } from "../common/ConfirmDialog";
+import { TemplatePickerDialog } from "../template/TemplatePickerDialog";
 import { NoteContextMenu } from "./NoteContextMenu";
 import type { ContextMenuState } from "./NoteContextMenu";
 import { NoteItem } from "./NoteItem";
@@ -24,6 +26,8 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  /** 输入标题确认后待选模板的标题（阶段五：新建笔记 → 模板选择） */
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -62,16 +66,29 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
   const errorMessage = (error: unknown, fallback: string): string =>
     error instanceof Error ? error.message : fallback;
 
-  /** 新建笔记：在当前课程目录创建 .md 文件 */
-  const handleCreate = async () => {
+  /** 新建笔记：确认标题 → 弹出模板选择（阶段五） */
+  const handleCreate = () => {
     const title = newTitle.trim();
-    if (!title || !workspacePath || !course) return;
+    if (!title || !course) return;
+    setCreating(false);
+    setNewTitle("");
+    setPendingTitle(title);
+  };
+
+  /** 选中模板：变量替换后创建笔记文件 */
+  const handlePickTemplate = async (templateContent: string) => {
+    if (!pendingTitle || !workspacePath || !course) return;
     try {
-      const entry = await fs.createNote(workspacePath, course.slug, title);
+      const content = applyTemplate(templateContent, {
+        title: pendingTitle,
+        courseName: course.name,
+        date: todayDate(),
+      });
+      const entry = await fs.createNote(workspacePath, course.slug, pendingTitle, content);
       addNote(entry);
-      setNewTitle("");
-      setCreating(false);
+      setPendingTitle(null);
     } catch (error) {
+      setPendingTitle(null);
       showToast(errorMessage(error, "新建笔记失败"), "error");
     }
   };
@@ -237,6 +254,14 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
         }}
         onDelete={(id) => setDeletingId(id)}
         onClose={() => setMenu(null)}
+      />
+
+      {/* 新建笔记模板选择 */}
+      <TemplatePickerDialog
+        open={pendingTitle !== null}
+        courseName={course?.name ?? ""}
+        onPick={(content) => void handlePickTemplate(content)}
+        onCancel={() => setPendingTitle(null)}
       />
 
       {/* 删除二次确认 */}

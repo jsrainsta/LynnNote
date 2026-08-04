@@ -58,8 +58,9 @@ pub fn create_note(
     workspace: String,
     course_slug: String,
     title: String,
+    content: Option<String>,
 ) -> Result<filesystem::NoteEntry, String> {
-    filesystem::create_note(&workspace, &course_slug, &title)
+    filesystem::create_note(&workspace, &course_slug, &title, content.as_deref())
 }
 
 #[tauri::command]
@@ -102,6 +103,24 @@ pub fn update_course(
 #[tauri::command]
 pub fn delete_course(workspace: String, id: String) -> Result<(), String> {
     filesystem::delete_course(&workspace, &id)
+}
+
+#[tauri::command]
+pub fn list_templates(workspace: String) -> Result<Vec<filesystem::NoteTemplate>, String> {
+    filesystem::list_templates(&workspace)
+}
+
+#[tauri::command]
+pub fn save_template(
+    workspace: String,
+    template: filesystem::NoteTemplate,
+) -> Result<filesystem::NoteTemplate, String> {
+    filesystem::save_template(&workspace, template)
+}
+
+#[tauri::command]
+pub fn delete_template(workspace: String, id: String) -> Result<(), String> {
+    filesystem::delete_template(&workspace, &id)
 }
 
 #[tauri::command]

@@ -390,11 +390,14 @@ pub fn write_note(
     })
 }
 
-/// 新建笔记：在课程目录下创建 <清理后的标题>.md，内容为空白笔记模板。
+/// 新建笔记：在课程目录下创建 <清理后的标题>.md。
+/// content 为 Some 时写入模板内容（阶段五：模板变量替换在前端完成），
+/// None 时用默认标题模板 `# {title}\n`。
 pub fn create_note(
     workspace: &str,
     course_slug: &str,
     title: &str,
+    content: Option<&str>,
 ) -> Result<NoteEntry, String> {
     if course_slug.is_empty()
         || course_slug.contains(['/', '\\'])
@@ -412,7 +415,9 @@ pub fn create_note(
     if target.exists() {
         return Err(format!("同名笔记已存在：{}", sanitize_filename(title)));
     }
-    fs::write(&target, format!("# {title}\n")).map_err(|e| format!("新建笔记失败：{e}"))?;
+    let default_body = format!("# {title}\n");
+    let body = content.unwrap_or(&default_body);
+    fs::write(&target, body).map_err(|e| format!("新建笔记失败：{e}"))?;
     note_entry(course_slug, &target)
 }
 
@@ -602,6 +607,102 @@ pub fn delete_course(workspace: &str, id: &str) -> Result<(), String> {
         fs::remove_dir_all(&dir).map_err(|e| format!("删除课程目录失败：{e}"))?;
     }
     Ok(())
+}
+
+// ---------- 自定义笔记模板（阶段五：工作区 templates.json） ----------
+
+/// 自定义笔记模板（内置模板为前端常量，不落盘）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteTemplate {
+    /// 空字符串 = 新建（生成时间戳 id）；非空 = 更新
+    pub id: String,
+    pub name: String,
+    pub content: String,
+    pub updated_at: String,
+}
+
+fn templates_path(workspace: &Path) -> PathBuf {
+    workspace.join("templates.json")
+}
+
+fn load_templates(workspace: &Path) -> Result<Vec<NoteTemplate>, String> {
+    let path = templates_path(workspace);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = fs::read_to_string(&path).map_err(|e| format!("读取 templates.json 失败：{e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("templates.json 解析失败：{e}"))
+}
+
+fn save_templates(workspace: &Path, templates: &[NoteTemplate]) -> Result<(), String> {
+    let json =
+        serde_json::to_string(templates).map_err(|e| format!("序列化模板数据失败：{e}"))?;
+    fs::write(templates_path(workspace), json).map_err(|e| format!("写入 templates.json 失败：{e}"))
+}
+
+/// 列出自定义模板（按更新时间倒序）
+pub fn list_templates(workspace: &str) -> Result<Vec<NoteTemplate>, String> {
+    let mut templates = load_templates(Path::new(workspace))?;
+    templates.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(templates)
+}
+
+/// 新增或更新自定义模板：id 为空生成时间戳 id；名称/内容不能为空。
+pub fn save_template(workspace: &str, template: NoteTemplate) -> Result<NoteTemplate, String> {
+    let name = template.name.trim();
+    let content = template.content.trim();
+    if name.is_empty() {
+        return Err("模板名称不能为空".into());
+    }
+    if content.is_empty() {
+        return Err("模板内容不能为空".into());
+    }
+    let ws = Path::new(workspace);
+    let mut templates = load_templates(ws)?;
+    let now = iso_ts(std::time::SystemTime::now());
+    let saved = if template.id.is_empty() {
+        // 时间戳 id（毫秒，避免同秒创建冲突）
+        let id = format!(
+            "custom-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or_default()
+        );
+        NoteTemplate {
+            id,
+            name: name.to_string(),
+            content: content.to_string(),
+            updated_at: now,
+        }
+    } else {
+        let mut existing = templates
+            .iter()
+            .find(|t| t.id == template.id)
+            .cloned()
+            .ok_or_else(|| "模板不存在".to_string())?;
+        existing.name = name.to_string();
+        existing.content = content.to_string();
+        existing.updated_at = now;
+        existing
+    };
+    templates.retain(|t| t.id != saved.id);
+    templates.push(saved.clone());
+    save_templates(ws, &templates)?;
+    Ok(saved)
+}
+
+/// 删除自定义模板
+pub fn delete_template(workspace: &str, id: &str) -> Result<(), String> {
+    let ws = Path::new(workspace);
+    let mut templates = load_templates(ws)?;
+    let before = templates.len();
+    templates.retain(|t| t.id != id);
+    if templates.len() == before {
+        return Err("模板不存在".into());
+    }
+    save_templates(ws, &templates)
 }
 
 // ---------- 最近打开记录（应用配置目录） ----------

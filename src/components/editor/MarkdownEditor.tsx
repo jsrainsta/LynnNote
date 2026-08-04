@@ -27,6 +27,7 @@ import { useEditorStore } from "../../stores/useEditorStore";
 import { editorTheme, sourceHighlighting } from "./editor-theme";
 import { mathWidgetExtension } from "./math-widget";
 import { markdownKeymap } from "./markdown-commands";
+import { slashCommandsExtension } from "./slash-commands";
 
 export type EditorVariant = "live" | "source";
 
@@ -149,6 +150,7 @@ function LiveEditor({
     return [
       lineNumbersCompartment.of([]),
       Prec.high(keymap.of(markdownKeymap())),
+      slashCommandsExtension(),
       mathWidgetExtension(),
       trackPositionExtension(onPosition),
       restorePositionExtension(savedPos),
@@ -221,6 +223,7 @@ function SourceEditor({
           search({ top: true }),
           sourceHighlighting,
           editorTheme,
+          slashCommandsExtension(),
           keymap.of([
             ...markdownKeymap(),
             ...closeBracketsKeymap,

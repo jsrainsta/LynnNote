@@ -17,6 +17,9 @@ pub fn run() {
             commands::create_course,
             commands::update_course,
             commands::delete_course,
+            commands::list_templates,
+            commands::save_template,
+            commands::delete_template,
             commands::load_recent,
             commands::save_recent,
         ])

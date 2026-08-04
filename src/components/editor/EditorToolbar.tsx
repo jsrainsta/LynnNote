@@ -2,6 +2,8 @@ import { Columns2, Eye, Focus, Hash, PenLine } from "lucide-react";
 import { useCourseStore } from "../../stores/useCourseStore";
 import { useNoteStore } from "../../stores/useNoteStore";
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useFocusStore } from "../../stores/useFocusStore";
+import { useToastStore } from "../../stores/useToastStore";
 import type { SaveStatus } from "../../stores/useEditorStore";
 import { IconButton } from "../common/IconButton";
 import { cx } from "../../lib/utils/cx";
@@ -35,6 +37,16 @@ export function EditorToolbar() {
   const saveStatus = useEditorStore((s) => s.saveStatus);
   const showLineNumbers = useEditorStore((s) => s.showLineNumbers);
   const toggleLineNumbers = useEditorStore((s) => s.toggleLineNumbers);
+  const enterFocus = useFocusStore((s) => s.enter);
+  const showToast = useToastStore((s) => s.show);
+
+  const handleEnterFocus = () => {
+    if (!note) {
+      showToast("请先选择一篇笔记", "error");
+      return;
+    }
+    enterFocus();
+  };
 
   const course = courses.find((c) => c.id === selectedCourseId);
   const note = notes.find((n) => n.id === selectedNoteId);
@@ -86,7 +98,7 @@ export function EditorToolbar() {
         {saveState.label}
       </span>
 
-      <IconButton label="专注模式（阶段六实现）" disabled className="ml-0.5">
+      <IconButton label="进入专注模式（F11）" onClick={handleEnterFocus} className="ml-0.5">
         <Focus className="size-4" />
       </IconButton>
     </header>

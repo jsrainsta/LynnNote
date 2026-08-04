@@ -5,11 +5,13 @@ import { FileText, Loader2 } from "lucide-react";
 import { useNoteStore } from "../../stores/useNoteStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useFocusStore } from "../../stores/useFocusStore";
 import { useToastStore } from "../../stores/useToastStore";
 import { fs } from "../../lib/storage/fs";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { EditorToolbar } from "./EditorToolbar";
+import { SlashMenu } from "./SlashMenu";
 
 const SPLIT_SEPARATOR_CLASS =
   "w-px shrink-0 bg-border transition-colors duration-150 hover:bg-border-strong";
@@ -26,6 +28,7 @@ const AUTOSAVE_DELAY = 800;
  * 编辑停止 800ms 后真实写入（saveNow），切换笔记前立即保存。
  */
 export function EditorArea() {
+  const focusActive = useFocusStore((s) => s.active);
   const mode = useEditorStore((s) => s.mode);
   const showLineNumbers = useEditorStore((s) => s.showLineNumbers);
   const noteId = useNoteStore((s) => s.selectedNoteId);
@@ -116,7 +119,7 @@ export function EditorArea() {
   if (!noteId) {
     return (
       <main className="flex h-full min-w-0 flex-col bg-panel" aria-label="编辑区域">
-        <EditorToolbar />
+        {!focusActive && <EditorToolbar />}
         <EmptyState icon={FileText} title="未选择笔记" description="从左侧选择一篇笔记开始记录" />
       </main>
     );
@@ -127,7 +130,7 @@ export function EditorArea() {
   if (content === undefined) {
     return (
       <main className="flex h-full min-w-0 flex-col bg-panel" aria-label="编辑区域">
-        <EditorToolbar />
+        {!focusActive && <EditorToolbar />}
         <EmptyState icon={Loader2} title="正在加载笔记…" description="" />
       </main>
     );
@@ -135,7 +138,7 @@ export function EditorArea() {
 
   return (
     <main className="flex h-full min-w-0 flex-col bg-panel" aria-label="编辑区域">
-      <EditorToolbar />
+      {!focusActive && <EditorToolbar />}
       <div className="min-h-0 flex-1">
         {mode === "preview" ? (
           <MarkdownPreview content={content} />
@@ -167,6 +170,7 @@ export function EditorArea() {
           />
         )}
       </div>
+      <SlashMenu />
     </main>
   );
 }

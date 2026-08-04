@@ -371,3 +371,8 @@ body {
     transform: translateY(0);
   }
 }
+
+/* ---------- 阶段六：专注模式（字号略微增大） ---------- */
+.focus-mode .cm-content {
+  font-size: 17px;
+}

@@ -61,6 +61,14 @@ export interface WriteNoteResult {
   hash: number;
 }
 
+/** 自定义笔记模板（对应 Rust NoteTemplate，camelCase） */
+export interface NoteTemplateJson {
+  id: string;
+  name: string;
+  content: string;
+  updatedAt: string;
+}
+
 /** 课程更新补丁：省略的字段不修改（Rust Option 语义），空字符串 = 清空 */
 export interface CoursePatch {
   name?: string;
@@ -89,6 +97,7 @@ export const isTauri =
 const LS_RECENT = "lynnnote:recent";
 const LS_WS_PREFIX = "lynnnote:ws:";
 const LS_CONTENT_PREFIX = "lynnnote:content:";
+const LS_TEMPLATES = "lynnnote:templates";
 
 function lsGet(key: string): string | null {
   try {
@@ -163,6 +172,7 @@ export interface Fs {
     workspace: string,
     courseSlug: string,
     title: string,
+    content?: string,
   ) => Promise<NoteEntryJson>;
   renameNote: (
     workspace: string,
@@ -177,6 +187,12 @@ export interface Fs {
     patch: CoursePatch,
   ) => Promise<CourseMetaJson>;
   deleteCourse: (workspace: string, id: string) => Promise<void>;
+  listTemplates: (workspace: string) => Promise<NoteTemplateJson[]>;
+  saveTemplate: (
+    workspace: string,
+    template: NoteTemplateJson,
+  ) => Promise<NoteTemplateJson>;
+  deleteTemplate: (workspace: string, id: string) => Promise<void>;
   loadRecent: () => Promise<string[]>;
   saveRecent: (path: string) => Promise<void>;
 }
@@ -194,8 +210,8 @@ export const fs: Fs = isTauri
           content,
           expectedHash,
         }),
-      createNote: (workspace, courseSlug, title) =>
-        invoke<NoteEntryJson>("create_note", { workspace, courseSlug, title }),
+      createNote: (workspace, courseSlug, title, content) =>
+        invoke<NoteEntryJson>("create_note", { workspace, courseSlug, title, content }),
       renameNote: (workspace, relativePath, newTitle) =>
         invoke<NoteEntryJson>("rename_note", {
           workspace,
@@ -210,6 +226,12 @@ export const fs: Fs = isTauri
         invoke<CourseMetaJson>("update_course", { workspace, id, ...patch }),
       deleteCourse: (workspace, id) =>
         invoke<void>("delete_course", { workspace, id }),
+      listTemplates: (workspace) =>
+        invoke<NoteTemplateJson[]>("list_templates", { workspace }),
+      saveTemplate: (workspace, template) =>
+        invoke<NoteTemplateJson>("save_template", { workspace, template }),
+      deleteTemplate: (workspace, id) =>
+        invoke<void>("delete_template", { workspace, id }),
       loadRecent: () => invoke<string[]>("load_recent"),
       saveRecent: (path) => invoke<void>("save_recent", { path }),
     }
@@ -240,7 +262,7 @@ export const fs: Fs = isTauri
         lsSet(lsContentKey(relativePath), content);
         return { status: "ok", hash: hashContent(content) };
       },
-      createNote: async (_workspace, courseSlug, title) => {
+      createNote: async (_workspace, courseSlug, title, content) => {
         const path = DEMO_PATH;
         const scan = lsGetWs(path) ?? lsInitDemoWorkspace();
         const fileName = `${title.replace(/[\\/:*?"<>|\n\r\t]/g, "-")}.md`;
@@ -248,16 +270,16 @@ export const fs: Fs = isTauri
         if (scan.notes.some((n) => n.relativePath === rel)) {
           throw new Error("同名笔记已存在");
         }
-        const content = `# ${title}\n`;
-        lsSet(lsContentKey(rel), content);
+        const body = content ?? `# ${title}\n`;
+        lsSet(lsContentKey(rel), body);
         const entry: NoteEntryJson = {
           id: rel,
           courseSlug,
           title,
           fileName,
           relativePath: rel,
-          head: content.slice(0, 200),
-          wordCount: content.replace(/\s/g, "").length,
+          head: body.slice(0, 200),
+          wordCount: body.replace(/\s/g, "").length,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           pinned: false,
@@ -265,6 +287,40 @@ export const fs: Fs = isTauri
         scan.notes.push(entry);
         lsSaveWs(path, scan);
         return entry;
+      },
+      listTemplates: async () => {
+        const raw = lsGet(LS_TEMPLATES);
+        return raw ? (JSON.parse(raw) as NoteTemplateJson[]) : [];
+      },
+      saveTemplate: async (_ws, template) => {
+        const list = await fs.listTemplates(_ws);
+        const name = template.name.trim();
+        const content = template.content.trim();
+        if (!name) throw new Error("模板名称不能为空");
+        if (!content) throw new Error("模板内容不能为空");
+        const now = new Date().toISOString();
+        const saved: NoteTemplateJson = template.id
+          ? { ...template, name, content, updatedAt: now }
+          : {
+              id: `custom-${Date.now()}`,
+              name,
+              content,
+              updatedAt: now,
+            };
+        lsSet(
+          LS_TEMPLATES,
+          JSON.stringify([
+            ...list.filter((t) => t.id !== saved.id),
+            saved,
+          ]),
+        );
+        return saved;
+      },
+      deleteTemplate: async (_ws, id) => {
+        const list = await fs.listTemplates(_ws);
+        const next = list.filter((t) => t.id !== id);
+        if (next.length === list.length) throw new Error("模板不存在");
+        lsSet(LS_TEMPLATES, JSON.stringify(next));
       },
       renameNote: async (_workspace, relativePath, newTitle) => {
         const path = DEMO_PATH;
