@@ -12,8 +12,11 @@ import { useEditorStore } from "./stores/useEditorStore";
 import { useFocusStore } from "./stores/useFocusStore";
 import type { FocusSummary } from "./stores/useFocusStore";
 import { useNoteStore } from "./stores/useNoteStore";
+import { useCourseStore } from "./stores/useCourseStore";
 import { useToastStore } from "./stores/useToastStore";
+import { UI_EVENTS, useUiEventStore } from "./stores/useUiEventStore";
 import { isTauri } from "./lib/storage/fs";
+import type { EditorMode } from "./types";
 
 export default function App() {
   const theme = useSettingsStore((s) => s.theme);
@@ -105,6 +108,25 @@ export default function App() {
         if (e.defaultPrevented) return;
         e.preventDefault();
         if (useNoteStore.getState().selectedNoteId) setSearchMode("note");
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "s") {
+        // Ctrl+S：立即保存当前笔记（规范 §19）
+        e.preventDefault();
+        const noteId = useNoteStore.getState().selectedNoteId;
+        if (noteId) void useEditorStore.getState().saveNow(noteId);
+      } else if (mod && !e.shiftKey && e.key.toLowerCase() === "n") {
+        // Ctrl+N：新建笔记（规范 §19；触发笔记面板的新建输入）
+        e.preventDefault();
+        if (!useCourseStore.getState().selectedCourseId) {
+          useToastStore.getState().show("请先选择一门课程", "error");
+          return;
+        }
+        useUiEventStore.getState().fire(UI_EVENTS.NEW_NOTE);
+      } else if (mod && !e.shiftKey && e.key === "/") {
+        // Ctrl+/：切换编辑模式（规范 §19）
+        e.preventDefault();
+        const s = useEditorStore.getState();
+        const cycle: EditorMode[] = ["edit", "split", "preview"];
+        s.setMode(cycle[(cycle.indexOf(s.mode) + 1) % cycle.length]);
       }
     };
     window.addEventListener("keydown", onKey);

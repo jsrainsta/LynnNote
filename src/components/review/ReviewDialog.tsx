@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import type { Course } from "../../types";
 import { useIndexStore } from "../../stores/useIndexStore";
 import type { IndexedCard } from "../../stores/useIndexStore";
+import { useNoteStore } from "../../stores/useNoteStore";
+import { useCourseStore } from "../../stores/useCourseStore";
+import { useEditorStore } from "../../stores/useEditorStore";
+import { useEditorActionStore } from "../../stores/useEditorActionStore";
 import { cardKey, useReviewStore } from "../../stores/useReviewStore";
 import type { ReviewRating } from "../../stores/useReviewStore";
 import { IconButton } from "../common/IconButton";
@@ -202,14 +206,34 @@ export function ReviewDialog({ open, course, onClose }: ReviewDialogProps) {
               </div>
             )}
 
-            {/* 底部：进度与翻卡 */}
+            {/* 底部：来源跳转 / 进度 / 翻卡（规范 §27 场景 7） */}
             <div className="mt-4 flex items-center justify-between">
-              <IconButton label="上一张" onClick={goPrev} disabled={index === 0}>
-                <ChevronLeft className="size-4" />
-              </IconButton>
+              <button
+                type="button"
+                onClick={() => {
+                  // 打开卡片来源笔记并定位到卡片（复用阶段七 locate）
+                  useCourseStore.getState().selectCourse(current.courseSlug);
+                  useNoteStore.getState().selectNote(current.noteId);
+                  if (useEditorStore.getState().mode === "preview") {
+                    useEditorStore.getState().setMode("edit");
+                  }
+                  useEditorActionStore
+                    .getState()
+                    .requestLocate(current.noteId, current.offset, current.offset + current.question.length);
+                  onClose();
+                }}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
+                aria-label="打开卡片来源笔记"
+              >
+                <ExternalLink className="size-3.5" aria-hidden="true" />
+                打开来源
+              </button>
               <span className="text-[12px] tabular-nums text-ink-tertiary">
                 第 {index + 1} / {order.length} 张
               </span>
+              <IconButton label="上一张" onClick={goPrev} disabled={index === 0}>
+                <ChevronLeft className="size-4" />
+              </IconButton>
               <IconButton label="下一张" onClick={goNext} disabled={index >= order.length - 1}>
                 <ChevronRight className="size-4" />
               </IconButton>
