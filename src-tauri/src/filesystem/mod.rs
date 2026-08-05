@@ -345,12 +345,72 @@ pub fn scan_workspace(workspace: &str) -> Result<ScanResult, String> {
 pub fn read_note(workspace: &str, relative_path: &str) -> Result<NoteReadResult, String> {
     let ws = Path::new(workspace);
     let target = resolve_in_workspace(ws, relative_path)?;
-    let content =
-        fs::read_to_string(&target).map_err(|e| format!("读取笔记失败：{e}"))?;
+    let raw = fs::read_to_string(&target).map_err(|e| format!("读取笔记失败：{e}"))?;
+    // 统一换行：CRLF → LF。外部编辑器可能写入 Windows 换行，
+    // 前端解析器/定位均按 LF 坐标计算，这里一次归一化保证一致。
+    let content = raw.replace("\r\n", "\n");
     Ok(NoteReadResult {
         content: content.clone(),
         hash: hash_content(&content),
     })
+}
+
+/// 批量索引条目（阶段七索引构建 / 阶段八全文搜索的数据源）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteContentItem {
+    pub id: String,
+    pub course_slug: String,
+    pub title: String,
+    pub relative_path: String,
+    pub content: String,
+}
+
+/// 导出设置到工作区根目录 lynnnote-settings.json（阶段八设置-数据）。
+pub fn export_settings(workspace: &str, json: &str) -> Result<(), String> {
+    let ws = Path::new(workspace);
+    if !ws.is_dir() {
+        return Err("工作区不存在".into());
+    }
+    fs::write(ws.join("lynnnote-settings.json"), json)
+        .map_err(|e| format!("导出设置失败：{e}"))
+}
+
+/// 用系统文件管理器打开工作区文件夹（阶段八设置-数据）。
+pub fn reveal_workspace(workspace: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(workspace)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败：{e}"))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        std::process::Command::new(opener)
+            .arg(workspace)
+            .spawn()
+            .map_err(|e| format!("打开文件夹失败：{e}"))?;
+    }
+    Ok(())
+}
+
+/// 一次读取全部笔记内容（索引构建用；避免逐篇 invoke）。
+pub fn read_all_notes(workspace: &str) -> Result<Vec<NoteContentItem>, String> {
+    let scan = scan_workspace(workspace)?;
+    let mut out = Vec::with_capacity(scan.notes.len());
+    for note in &scan.notes {
+        let read = read_note(workspace, &note.relative_path)?;
+        out.push(NoteContentItem {
+            id: note.id.clone(),
+            course_slug: note.course_slug.clone(),
+            title: note.title.clone(),
+            relative_path: note.relative_path.clone(),
+            content: read.content,
+        });
+    }
+    Ok(out)
 }
 
 /// 写入笔记。expected_hash 与当前磁盘内容不匹配时返回 conflict（文件被外部修改）。

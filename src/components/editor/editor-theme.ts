@@ -15,9 +15,10 @@ export const editorTheme = EditorView.theme(
       color: "var(--color-ink)",
     },
     ".cm-scroller": {
-      fontFamily: "var(--font-mono)",
-      fontSize: "15px",
-      lineHeight: "1.8",
+      /* 阶段八：字号/行高/字体由设置驱动（--ln-editor-*，App.tsx 设置） */
+      fontFamily: "var(--ln-editor-font, var(--font-mono))",
+      fontSize: "var(--ln-editor-font-size, 15px)",
+      lineHeight: "var(--ln-editor-line-height, 1.8)",
       overflow: "auto",
     },
     ".cm-content": {

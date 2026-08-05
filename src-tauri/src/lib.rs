@@ -10,6 +10,7 @@ pub fn run() {
             commands::pick_workspace,
             commands::scan_workspace,
             commands::read_note,
+            commands::read_all_notes,
             commands::write_note,
             commands::create_note,
             commands::rename_note,
@@ -20,6 +21,8 @@ pub fn run() {
             commands::list_templates,
             commands::save_template,
             commands::delete_template,
+            commands::reveal_workspace,
+            commands::export_settings,
             commands::load_recent,
             commands::save_recent,
         ])

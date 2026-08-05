@@ -2,6 +2,7 @@ import { Columns2, Eye, Focus, Hash, PenLine } from "lucide-react";
 import { useCourseStore } from "../../stores/useCourseStore";
 import { useNoteStore } from "../../stores/useNoteStore";
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useFocusStore } from "../../stores/useFocusStore";
 import { useToastStore } from "../../stores/useToastStore";
 import type { SaveStatus } from "../../stores/useEditorStore";
@@ -35,8 +36,8 @@ export function EditorToolbar() {
   const mode = useEditorStore((s) => s.mode);
   const setMode = useEditorStore((s) => s.setMode);
   const saveStatus = useEditorStore((s) => s.saveStatus);
-  const showLineNumbers = useEditorStore((s) => s.showLineNumbers);
-  const toggleLineNumbers = useEditorStore((s) => s.toggleLineNumbers);
+  const showLineNumbers = useSettingsStore((s) => s.showLineNumbers);
+  const setSettings = useSettingsStore((s) => s.set);
   const enterFocus = useFocusStore((s) => s.enter);
   const showToast = useToastStore((s) => s.show);
 
@@ -81,7 +82,7 @@ export function EditorToolbar() {
       <IconButton
         label={showLineNumbers ? "隐藏行号" : "显示行号"}
         active={showLineNumbers}
-        onClick={toggleLineNumbers}
+        onClick={() => setSettings({ showLineNumbers: !showLineNumbers })}
       >
         <Hash className="size-4" />
       </IconButton>

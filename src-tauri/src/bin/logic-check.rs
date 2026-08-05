@@ -3,8 +3,9 @@
 // 运行：cargo +stable-x86_64-pc-windows-gnu run --bin logic-check
 
 use lynnnote_lib::filesystem::{
-    create_note, delete_template, hash_content, list_templates, replace_first_heading,
-    sanitize_filename, save_template, slug_to_display_name, slugify, NoteTemplate,
+    create_note, delete_template, export_settings, hash_content, list_templates, read_all_notes,
+    replace_first_heading, sanitize_filename, save_template, slug_to_display_name, slugify,
+    NoteTemplate,
 };
 
 fn assert_eq(actual: String, expected: &str, label: &str) {
@@ -93,6 +94,29 @@ fn main() {
             panic!("断言失败：删除后列表应为空");
         }
         println!("  ok  delete_template 移除模板");
+
+        // 批量索引读取（阶段七：索引构建数据源）
+        // 注意：title 由内容首个 `# ` 标题推导（note_entry 语义），非文件名
+        let all = read_all_notes(&ws).expect("read_all_notes 失败");
+        if all.len() != 2 {
+            panic!("断言失败：read_all_notes 应返回 2 篇笔记");
+        }
+        let has_template = all
+            .iter()
+            .any(|n| n.title == "模板内容" && n.content == "# 模板内容\n\n正文\n");
+        if !has_template {
+            panic!("断言失败：read_all_notes 内容应包含模板测试全文");
+        }
+        let has_default = all.iter().any(|n| n.title == "默认测试" && n.content == "# 默认测试\n");
+        if !has_default {
+            panic!("断言失败：read_all_notes 应包含默认标题模板笔记");
+        }
+        println!("  ok  read_all_notes 批量返回全部笔记内容");
+
+        // 导出设置（阶段八：写入工作区根 lynnnote-settings.json）
+        export_settings(&ws, "{\"theme\":\"dark\"}").expect("export_settings 失败");
+        let exported = std::fs::read_to_string(tmp.join("lynnnote-settings.json")).unwrap();
+        assert_eq(exported, "{\"theme\":\"dark\"}", "export_settings 写入 JSON");
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

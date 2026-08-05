@@ -44,6 +44,11 @@ pub fn read_note(
 }
 
 #[tauri::command]
+pub fn read_all_notes(workspace: String) -> Result<Vec<filesystem::NoteContentItem>, String> {
+    filesystem::read_all_notes(&workspace)
+}
+
+#[tauri::command]
 pub fn write_note(
     workspace: String,
     relative_path: String,
@@ -121,6 +126,16 @@ pub fn save_template(
 #[tauri::command]
 pub fn delete_template(workspace: String, id: String) -> Result<(), String> {
     filesystem::delete_template(&workspace, &id)
+}
+
+#[tauri::command]
+pub fn reveal_workspace(workspace: String) -> Result<(), String> {
+    filesystem::reveal_workspace(&workspace)
+}
+
+#[tauri::command]
+pub fn export_settings(workspace: String, json: String) -> Result<(), String> {
+    filesystem::export_settings(&workspace, &json)
 }
 
 #[tauri::command]

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { Check, FolderOpen, Moon, PanelLeftClose, Plus, Settings, Sun, X } from "lucide-react";
@@ -9,6 +9,7 @@ import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useToastStore } from "../../stores/useToastStore";
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useIndexStore } from "../../stores/useIndexStore";
 import { fs } from "../../lib/storage/fs";
 import type { CoursePatch } from "../../lib/storage/fs";
 import { IconButton } from "../common/IconButton";
@@ -17,18 +18,26 @@ import { CourseItem } from "./CourseItem";
 import { CourseContextMenu } from "./CourseContextMenu";
 import type { CourseContextMenuState } from "./CourseContextMenu";
 import { CourseEditDialog } from "./CourseEditDialog";
+import { QuestionsPanel } from "../question/QuestionsPanel";
+import { SettingsDialog } from "../settings/SettingsDialog";
+import { UI_EVENTS, useUiEventStore } from "../../stores/useUiEventStore";
+import { cx } from "../../lib/utils/cx";
 
 interface CourseSidebarProps {
   panelRef: RefObject<PanelImperativeHandle | null>;
 }
 
-/** 左侧课程栏（规范 §8.1）；阶段四起支持新建/编辑/删除课程（courses.json 持久化） */
+type SidebarView = "courses" | "questions";
+
+/** 左侧课程栏（规范 §8.1）：课程视图 / 疑问视图（阶段七）双 tab */
 export function CourseSidebar({ panelRef }: CourseSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [menu, setMenu] = useState<CourseContextMenuState | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [view, setView] = useState<SidebarView>("courses");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const courses = useCourseStore((s) => s.courses);
   const selectedCourseId = useCourseStore((s) => s.selectedCourseId);
@@ -37,6 +46,7 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
   const removeCourse = useCourseStore((s) => s.removeCourse);
   const notes = useNoteStore((s) => s.notes);
   const removeNotesByCourseId = useNoteStore((s) => s.removeNotesByCourseId);
+  const questionCount = useIndexStore((s) => s.questions.filter((q) => !q.solved).length);
   const theme = useSettingsStore((s) => s.theme);
   const toggleTheme = useSettingsStore((s) => s.toggleTheme);
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
@@ -47,6 +57,23 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
   const deletingCourse = courses.find((c) => c.id === deletingId) ?? null;
   const countFor = (courseId: string) =>
     notes.filter((n) => n.courseId === courseId).length;
+
+  // 命令面板事件（阶段八）：新建课程 / 打开疑问列表 / 打开设置
+  const uiEvent = useUiEventStore((s) => s.event);
+  const consumeUiEvent = useUiEventStore((s) => s.consume);
+  useEffect(() => {
+    if (uiEvent === UI_EVENTS.NEW_COURSE) {
+      consumeUiEvent();
+      setView("courses");
+      setCreating(true);
+    } else if (uiEvent === UI_EVENTS.OPEN_QUESTIONS) {
+      consumeUiEvent();
+      setView("questions");
+    } else if (uiEvent === UI_EVENTS.OPEN_SETTINGS) {
+      consumeUiEvent();
+      setSettingsOpen(true);
+    }
+  }, [uiEvent, consumeUiEvent]);
 
   const errorMessage = (error: unknown, fallback: string): string =>
     error instanceof Error ? error.message : fallback;
@@ -96,6 +123,7 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
       // 先清编辑器缓存（按删除前的笔记 id），再移除列表
       const doomed = notes.filter((n) => n.courseId === id).map((n) => n.id);
       useEditorStore.getState().removeNotesContent(doomed);
+      useIndexStore.getState().removeNotes(doomed);
       removeCourse(id);
       removeNotesByCourseId(id);
       setDeletingId(null);
@@ -125,7 +153,39 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
         </IconButton>
       </div>
 
-      {/* 课程列表 */}
+      {/* 视图切换：课程 / 疑问 */}
+      <div
+        role="tablist"
+        aria-label="侧栏视图"
+        className="flex shrink-0 gap-1 px-2 pb-1.5"
+      >
+        {(
+          [
+            { key: "courses", label: "课程" },
+            { key: "questions", label: `疑问${questionCount > 0 ? ` ${questionCount}` : ""}` },
+          ] as Array<{ key: SidebarView; label: string }>
+        ).map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={view === key}
+            onClick={() => setView(key)}
+            className={cx(
+              "flex-1 rounded-lg px-2 py-1 text-[12px] transition-colors",
+              view === key
+                ? "bg-active font-medium text-ink"
+                : "text-ink-secondary hover:bg-hover hover:text-ink",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "questions" ? (
+        <QuestionsPanel />
+      ) : (
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-label="课程列表">
         <p className="px-2 pb-1 pt-2 text-[11px] font-medium tracking-wider text-ink-tertiary">
           课程
@@ -191,6 +251,7 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
           新建课程
         </button>
       </nav>
+      )}
 
       {/* 底部：主题切换 + 切换工作区 + 设置入口 */}
       <div className="flex shrink-0 items-center gap-1 border-t border-border px-3 py-2">
@@ -203,7 +264,7 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
         <IconButton label="切换工作区" onClick={() => void handleSwitchWorkspace()}>
           <FolderOpen className="size-4" />
         </IconButton>
-        <IconButton label="设置（阶段八实现）" disabled className="ml-auto">
+        <IconButton label="打开设置" className="ml-auto" onClick={() => setSettingsOpen(true)}>
           <Settings className="size-4" />
         </IconButton>
       </div>
@@ -223,6 +284,9 @@ export function CourseSidebar({ panelRef }: CourseSidebarProps) {
         onSave={(patch) => void handleSaveEdit(patch)}
         onCancel={() => setEditingId(null)}
       />
+
+      {/* 设置弹窗（阶段八） */}
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {/* 删除课程二次确认（提示该课程笔记数） */}
       <ConfirmDialog

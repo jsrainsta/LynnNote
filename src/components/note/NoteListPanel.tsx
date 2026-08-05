@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RefObject } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { BookOpen, Check, PanelLeftClose, Plus, Search, X } from "lucide-react";
@@ -6,6 +6,7 @@ import { useCourseStore } from "../../stores/useCourseStore";
 import { useNoteStore } from "../../stores/useNoteStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useIndexStore } from "../../stores/useIndexStore";
 import { useToastStore } from "../../stores/useToastStore";
 import { fs } from "../../lib/storage/fs";
 import { applyTemplate, todayDate } from "../../lib/templates";
@@ -16,6 +17,8 @@ import { TemplatePickerDialog } from "../template/TemplatePickerDialog";
 import { NoteContextMenu } from "./NoteContextMenu";
 import type { ContextMenuState } from "./NoteContextMenu";
 import { NoteItem } from "./NoteItem";
+import { ReviewDialog } from "../review/ReviewDialog";
+import { UI_EVENTS, useUiEventStore } from "../../stores/useUiEventStore";
 
 interface NoteListPanelProps {
   panelRef: RefObject<PanelImperativeHandle | null>;
@@ -31,6 +34,8 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /** 复习弹窗（阶段七：当前课程卡片复习） */
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const courses = useCourseStore((s) => s.courses);
   const selectedCourseId = useCourseStore((s) => s.selectedCourseId);
@@ -41,6 +46,13 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
   const removeNote = useNoteStore((s) => s.removeNote);
   const workspacePath = useWorkspaceStore((s) => s.path);
   const showToast = useToastStore((s) => s.show);
+  const reviewCards = useIndexStore((s) => s.cards);
+
+  /** 当前课程卡片数（复习按钮禁用依据） */
+  const courseCardCount = useMemo(
+    () => reviewCards.filter((c) => c.courseSlug === selectedCourseId).length,
+    [reviewCards, selectedCourseId],
+  );
 
   const course = courses.find((c) => c.id === selectedCourseId);
   const deletingNote = notes.find((n) => n.id === deletingId);
@@ -62,6 +74,23 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
           b.updatedAt.localeCompare(a.updatedAt),
       );
   }, [notes, selectedCourseId, query]);
+
+  // 命令面板事件（阶段八）：新建笔记 / 开始复习
+  const uiEvent = useUiEventStore((s) => s.event);
+  const consumeUiEvent = useUiEventStore((s) => s.consume);
+  useEffect(() => {
+    if (uiEvent === UI_EVENTS.NEW_NOTE) {
+      consumeUiEvent();
+      setCreating(true);
+    } else if (uiEvent === UI_EVENTS.START_REVIEW) {
+      consumeUiEvent();
+      if (courseCardCount === 0) {
+        showToast("该课程还没有复习卡片", "error");
+        return;
+      }
+      setReviewOpen(true);
+    }
+  }, [uiEvent, consumeUiEvent, courseCardCount, showToast]);
 
   const errorMessage = (error: unknown, fallback: string): string =>
     error instanceof Error ? error.message : fallback;
@@ -86,6 +115,8 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
       });
       const entry = await fs.createNote(workspacePath, course.slug, pendingTitle, content);
       addNote(entry);
+      // 新笔记直接入索引（含模板里的疑问/卡片）
+      useIndexStore.getState().reparse(entry.id, content);
       setPendingTitle(null);
     } catch (error) {
       setPendingTitle(null);
@@ -108,6 +139,7 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
       updateNote(id, entry);
       // 编辑器内容缓存键随 id（相对路径）变化，一并迁移
       useEditorStore.getState().remapNote(id, entry.id);
+      useIndexStore.getState().renameNote(id, entry.id);
       setRenaming(null);
     } catch (error) {
       showToast(errorMessage(error, "重命名失败"), "error");
@@ -122,6 +154,7 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
     try {
       await fs.deleteNote(workspacePath, note.relativePath);
       removeNote(id);
+      useIndexStore.getState().removeNotes([id]);
       setDeletingId(null);
       showToast("笔记已删除", "success");
     } catch (error) {
@@ -141,6 +174,13 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
         <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">
           {course?.name ?? "课程"}
         </h2>
+        <IconButton
+          label={courseCardCount > 0 ? `开始复习（${courseCardCount} 张卡片）` : "该课程还没有复习卡片"}
+          disabled={courseCardCount === 0}
+          onClick={() => setReviewOpen(true)}
+        >
+          <BookOpen className="size-4" />
+        </IconButton>
         <IconButton label="折叠笔记栏" onClick={() => panelRef.current?.collapse()}>
           <PanelLeftClose className="size-4" />
         </IconButton>
@@ -275,6 +315,13 @@ export function NoteListPanel({ panelRef }: NoteListPanelProps) {
           if (deletingId) void handleDelete(deletingId);
         }}
         onCancel={() => setDeletingId(null)}
+      />
+
+      {/* 复习弹窗（当前课程卡片，随机顺序复习） */}
+      <ReviewDialog
+        open={reviewOpen}
+        course={course}
+        onClose={() => setReviewOpen(false)}
       />
     </section>
   );

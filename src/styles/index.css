@@ -8,6 +8,18 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
+ * 阶段八：强调色派生。
+ * 设置页可自定义 --color-accent（App.tsx 写到 html 内联样式），
+ * accent-strong / accent-soft 由强调色实时推导（color-mix），
+ * 自定义强调色时整套配色保持一致。
+ */
+:root,
+.dark {
+  --color-accent-strong: color-mix(in srgb, var(--color-accent) 78%, var(--color-ink));
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+/*
  * 设计变量（Tailwind v4 @theme）
  * 浅色为默认值；深色在 .dark 作用域内覆盖同名变量，
  * 因此所有 utility（bg-page、text-ink 等）自动跟随主题。
@@ -127,10 +139,10 @@ body {
   --atomic-editor-selection-bg: var(--color-accent-soft);
   --atomic-editor-code-bg: var(--color-surface);
   --atomic-editor-code-rail: var(--color-border);
-  --atomic-editor-font: var(--font-sans);
+  --atomic-editor-font: var(--ln-editor-font, var(--font-sans));
   --atomic-editor-font-mono: var(--font-mono);
-  --atomic-editor-body-size: 15px;
-  --atomic-editor-body-leading: 1.8;
+  --atomic-editor-body-size: var(--ln-editor-font-size, 15px);
+  --atomic-editor-body-leading: var(--ln-editor-line-height, 1.8);
   --atomic-editor-measure: 72ch;
   --atomic-editor-radius: 6px;
   --atomic-editor-search-bg: var(--color-surface);
@@ -372,7 +384,14 @@ body {
   }
 }
 
-/* ---------- 阶段六：专注模式（字号略微增大） ---------- */
+/* ---------- 阶段六：专注模式（字号略微增大；阶段八跟随设置字号） ---------- */
 .focus-mode .cm-content {
-  font-size: 17px;
+  font-size: calc(var(--ln-editor-font-size, 15px) + 2px);
+}
+
+/* ---------- 阶段七：疑问/搜索定位高亮（editor-actions.ts） ---------- */
+.cm-locate-highlight {
+  background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+  border-radius: 3px;
+  transition: background-color 0.4s ease;
 }

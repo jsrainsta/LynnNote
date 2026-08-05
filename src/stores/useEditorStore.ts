@@ -4,6 +4,7 @@ import { fs } from "../lib/storage/fs";
 import { useWorkspaceStore } from "./useWorkspaceStore";
 import { useNoteStore } from "./useNoteStore";
 import { useToastStore } from "./useToastStore";
+import { useIndexStore } from "./useIndexStore";
 
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 
@@ -29,12 +30,13 @@ interface EditorState {
   /** 每篇笔记是否有未写盘的改动 */
   dirtyNotes: Record<string, boolean>;
 
-  showLineNumbers: boolean;
-  toggleLineNumbers: () => void;
-
   /** 每篇笔记的光标位置与滚动位置（会话内恢复） */
   lastPosition: Record<string, { pos: number; scrollTop: number }>;
   setLastPosition: (noteId: string, pos: number, scrollTop: number) => void;
+
+  /** 分栏模式同步滚动：源码侧最近一次滚动信息（阶段八；预览侧订阅） */
+  editorScroll: { noteId: string; scrollTop: number; scrollHeight: number } | null;
+  setEditorScroll: (noteId: string, scrollTop: number, scrollHeight: number) => void;
 
   /** 立即把指定笔记的未保存改动写入磁盘（防抖到期 / 切换笔记 / 关闭窗口时调用） */
   saveNow: (noteId: string) => Promise<void>;
@@ -74,14 +76,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   dirtyNotes: {},
 
-  showLineNumbers: false,
-  toggleLineNumbers: () => set((s) => ({ showLineNumbers: !s.showLineNumbers })),
-
   lastPosition: {},
   setLastPosition: (noteId, pos, scrollTop) =>
     set((s) => ({
       lastPosition: { ...s.lastPosition, [noteId]: { pos, scrollTop } },
     })),
+
+  editorScroll: null,
+  setEditorScroll: (noteId, scrollTop, scrollHeight) =>
+    set({ editorScroll: { noteId, scrollTop, scrollHeight } }),
 
   saveNow: async (noteId) => {
     const s = get();
@@ -112,6 +115,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
           noteHashes: { ...st.noteHashes, [noteId]: result.hash },
         }));
         if (currentNoteIs(noteId)) set({ saveStatus: "saved" });
+        // 保存成功 → 增量更新疑问/卡片索引（规范 §23）
+        useIndexStore.getState().reparse(noteId, content);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -5,6 +5,7 @@ import { FileText, Loader2 } from "lucide-react";
 import { useNoteStore } from "../../stores/useNoteStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useFocusStore } from "../../stores/useFocusStore";
 import { useToastStore } from "../../stores/useToastStore";
 import { fs } from "../../lib/storage/fs";
@@ -15,8 +16,6 @@ import { SlashMenu } from "./SlashMenu";
 
 const SPLIT_SEPARATOR_CLASS =
   "w-px shrink-0 bg-border transition-colors duration-150 hover:bg-border-strong";
-
-const AUTOSAVE_DELAY = 800;
 
 /**
  * 主编辑区（规范 §8.3）：
@@ -30,7 +29,10 @@ const AUTOSAVE_DELAY = 800;
 export function EditorArea() {
   const focusActive = useFocusStore((s) => s.active);
   const mode = useEditorStore((s) => s.mode);
-  const showLineNumbers = useEditorStore((s) => s.showLineNumbers);
+  const showLineNumbers = useSettingsStore((s) => s.showLineNumbers);
+  const enableMath = useSettingsStore((s) => s.enableMath);
+  const enableCodeHighlight = useSettingsStore((s) => s.enableCodeHighlight);
+  const syncScroll = useSettingsStore((s) => s.syncScroll);
   const noteId = useNoteStore((s) => s.selectedNoteId);
   const noteRelativePath = useNoteStore((s) => {
     const note = s.notes.find((n) => n.id === s.selectedNoteId);
@@ -95,16 +97,17 @@ export function EditorArea() {
     showToast,
   ]);
 
-  // 编辑内容：写入缓存并调度防抖保存（规范 §18：停止输入 800ms 后写盘）
+  // 编辑内容：写入缓存并调度防抖保存（规范 §18；延迟可在设置调整，阶段八）
   const handleContentChange = useCallback(
     (newContent: string) => {
       if (!noteId) return;
       setNoteContent(noteId, newContent);
+      const delay = useSettingsStore.getState().autosaveDelay;
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
         saveTimerRef.current = null;
         void saveNow(noteId);
-      }, AUTOSAVE_DELAY);
+      }, delay);
     },
     [noteId, setNoteContent, saveNow],
   );
@@ -141,7 +144,11 @@ export function EditorArea() {
       {!focusActive && <EditorToolbar />}
       <div className="min-h-0 flex-1">
         {mode === "preview" ? (
-          <MarkdownPreview content={content} />
+          <MarkdownPreview
+            content={content}
+            enableMath={enableMath}
+            enableCodeHighlight={enableCodeHighlight}
+          />
         ) : mode === "split" ? (
           <Group orientation="horizontal" className="h-full w-full">
             <Panel defaultSize="50" minSize="30" className="min-w-0">
@@ -156,7 +163,12 @@ export function EditorArea() {
             </Panel>
             <Separator className={SPLIT_SEPARATOR_CLASS} />
             <Panel defaultSize="50" minSize="30" className="min-w-0">
-              <MarkdownPreview content={content} />
+              <MarkdownPreview
+                content={content}
+                enableMath={enableMath}
+                enableCodeHighlight={enableCodeHighlight}
+                syncScroll={syncScroll}
+              />
             </Panel>
           </Group>
         ) : (

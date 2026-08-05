@@ -27,6 +27,7 @@ export interface NoteMeta {
   pinned: boolean;
 }
 
-export type Theme = "light" | "dark";
+/** 阶段八起支持跟随系统（App.tsx 用 matchMedia 解析） */
+export type Theme = "light" | "dark" | "system";
 
 export type EditorMode = "edit" | "split" | "preview";

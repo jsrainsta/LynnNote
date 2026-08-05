@@ -56,6 +56,15 @@ export interface NoteReadResult {
   hash: number;
 }
 
+/** 批量索引条目（阶段七索引构建 / 阶段八全文搜索用，对应 Rust NoteContentItem） */
+export interface NoteContentJson {
+  id: string;
+  courseSlug: string;
+  title: string;
+  relativePath: string;
+  content: string;
+}
+
 export interface WriteNoteResult {
   status: "ok" | "conflict";
   hash: number;
@@ -162,6 +171,8 @@ export interface Fs {
   /** 扫描指定工作区 */
   scanWorkspace: (path: string) => Promise<ScanResult>;
   readNote: (workspace: string, relativePath: string) => Promise<NoteReadResult>;
+  /** 一次读取全部笔记内容（索引构建；避免逐篇 invoke） */
+  readAllNotes: (workspace: string) => Promise<NoteContentJson[]>;
   writeNote: (
     workspace: string,
     relativePath: string,
@@ -193,6 +204,10 @@ export interface Fs {
     template: NoteTemplateJson,
   ) => Promise<NoteTemplateJson>;
   deleteTemplate: (workspace: string, id: string) => Promise<void>;
+  /** 系统文件管理器打开工作区文件夹（设置-数据，阶段八） */
+  revealWorkspace: (workspace: string) => Promise<void>;
+  /** 导出设置到工作区根目录 lynnnote-settings.json（设置-数据，阶段八） */
+  exportSettings: (workspace: string, json: string) => Promise<void>;
   loadRecent: () => Promise<string[]>;
   saveRecent: (path: string) => Promise<void>;
 }
@@ -203,6 +218,8 @@ export const fs: Fs = isTauri
       scanWorkspace: (path) => invoke<ScanResult>("scan_workspace", { path }),
       readNote: (workspace, relativePath) =>
         invoke<NoteReadResult>("read_note", { workspace, relativePath }),
+      readAllNotes: (workspace) =>
+        invoke<NoteContentJson[]>("read_all_notes", { workspace }),
       writeNote: (workspace, relativePath, content, expectedHash) =>
         invoke<WriteNoteResult>("write_note", {
           workspace,
@@ -232,6 +249,10 @@ export const fs: Fs = isTauri
         invoke<NoteTemplateJson>("save_template", { workspace, template }),
       deleteTemplate: (workspace, id) =>
         invoke<void>("delete_template", { workspace, id }),
+      revealWorkspace: (workspace) =>
+        invoke<void>("reveal_workspace", { workspace }),
+      exportSettings: (workspace, json) =>
+        invoke<void>("export_settings", { workspace, json }),
       loadRecent: () => invoke<string[]>("load_recent"),
       saveRecent: (path) => invoke<void>("save_recent", { path }),
     }
@@ -250,9 +271,22 @@ export const fs: Fs = isTauri
             .pop()
             ?.replace(/\.md$/, "")
             .replace(/-/g, " ") ?? "未命名笔记";
-        const content =
-          lsGet(lsContentKey(relativePath)) ?? demoContent(relativePath, title);
+        // 统一换行（与 Rust read_note 一致）：解析/定位按 LF 坐标计算
+        const content = (lsGet(lsContentKey(relativePath)) ?? demoContent(relativePath, title)).replace(/\r\n/g, "\n");
         return { content, hash: hashContent(content) };
+      },
+      readAllNotes: async (_workspace) => {
+        const scan = lsGetWs(DEMO_PATH) ?? lsInitDemoWorkspace();
+        return scan.notes.map((note) => ({
+          id: note.id,
+          courseSlug: note.courseSlug,
+          title: note.title,
+          relativePath: note.relativePath,
+          content: (
+            lsGet(lsContentKey(note.relativePath)) ??
+            demoContent(note.relativePath, note.title)
+          ).replace(/\r\n/g, "\n"),
+        }));
       },
       writeNote: async (_workspace, relativePath, content, expectedHash) => {
         const current = lsGet(lsContentKey(relativePath)) ?? "";
@@ -321,6 +355,13 @@ export const fs: Fs = isTauri
         const next = list.filter((t) => t.id !== id);
         if (next.length === list.length) throw new Error("模板不存在");
         lsSet(LS_TEMPLATES, JSON.stringify(next));
+      },
+      revealWorkspace: async () => {
+        // 浏览器模式无系统文件管理器，静默成功（设置页 toast 提示路径）
+      },
+      exportSettings: async (_ws, json) => {
+        // 浏览器模式写入 localStorage 模拟（键 lynnnote:settings-export）
+        lsSet("lynnnote:settings-export", json);
       },
       renameNote: async (_workspace, relativePath, newTitle) => {
         const path = DEMO_PATH;
